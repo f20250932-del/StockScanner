@@ -1,13 +1,11 @@
-# notifier.py
 import os
 import requests
 import pandas as pd
-from plyer import notification
 
 ALERT_LOG_FILE = "Data/alerts.csv"
 sent_alerts = set()
 
-# 🔑 Your credentials positioned globally so all functions can read them
+# 🔑 Your Telegram Gateway Credentials
 TELEGRAM_TOKEN = "8852776438:AAGn1z4sAo1qe86neId2ezqp9Lh6oMJOqUw"
 TELEGRAM_CHAT_ID = "8069715872"
 
@@ -21,7 +19,12 @@ def send_telegram_message(title, message):
         "parse_mode": "Markdown"
     }
     try:
-        requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            print("🚀 Alert successfully broadcasted to Telegram channel!")
+        else:
+            print(
+                f"Telegram API Warning: Code {response.status_code} - {response.text}")
     except Exception as e:
         print(f"Telegram Delivery Error: {e}")
 
@@ -32,22 +35,12 @@ def trigger_alert(title, message, ticker, signal_type):
         return False
 
     print(f"\n{'='*60}\n{title}\n{message}\n{'='*60}")
-    try:
-        # Local desktop popup
-        notification.notify(
-            title=title,
-            message=message,
-            app_name="Stock Scanner",
-            timeout=20
-        )
-        # Mobile delivery
-        send_telegram_message(title, message)
 
-        sent_alerts.add(alert_key)
-        return True
-    except Exception as e:
-        print(f"Notification Error: {e}")
-        return False
+    # 📱 Clean Mobile delivery (No desktop popup code to crash the cloud node)
+    send_telegram_message(title, message)
+
+    sent_alerts.add(alert_key)
+    return True
 
 
 def log_alert_to_csv(timestamp, signal_type, ticker, live_price, low_target, high_target, historic_move, start_date, end_date):
