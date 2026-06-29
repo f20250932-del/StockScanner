@@ -80,9 +80,9 @@ def main():
         execute_scan_cycle(tickers, force_alerts=True)
 
         # Auto-generate summaries if it's the late afternoon run
-        # if now_ist.hour >= 15:
-        print("📝 Generating post-market analytical data summaries...")
-        reports.generate_all_reports()
+        if now_ist.hour >= 15:
+            print("📝 Generating post-market analytical data summaries...")
+            reports.generate_all_reports()
 
     print("✅ Run cycle complete. Powering down cloud node safely.")
 
