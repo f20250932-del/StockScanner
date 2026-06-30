@@ -1,5 +1,6 @@
 {
     "V40": [
+        "LT.NS",
         "RELIANCE.NS",
         "SBIN.NS",
         "HDFCBANK.NS",
@@ -14,9 +15,9 @@
         "HDFCLIFE.NS",
         "ICICIPRULI.NS",
         "ICICIGI.NS",
-        "BAJFINANCE.NS",
-        "BAJAJHLDNG.NS",
         "BAJAJFINSV.NS",
+        "BAJAJHLDG.NS",
+        "BAJFINANCE.NS",
         "BAJAJ-AUTO.NS",
         "MARUTI.NS",
         "HINDUNILVR.NS",
@@ -38,15 +39,15 @@
         "PFIZER.NS",
         "SANOFI.NS",
         "ASIANPAINT.NS",
-        "BERGEPAINT.NS"
+        "BERGERPAINT.NS"
     ],
-    "V40 Next": [
+    "V40_Next": [
         "CDSL.NS",
         "BSE.NS",
         "JIOFIN.NS",
         "ANGELONE.NS",
         "CAMS.NS",
-        "BAJAJHFL.NS",
+        "BAJAJFL.NS",
         "MCX.NS",
         "ULTRACEMCO.NS",
         "ACC.NS",
@@ -65,7 +66,7 @@
         "GODREJCP.NS",
         "DIXON.NS",
         "KAJARIACER.NS",
-        "HONASA.NS",
+        "HONAUT.NS",
         "DMART.NS",
         "RELAXO.NS",
         "BLUESTARCO.NS",
@@ -76,7 +77,7 @@
         "TATAMOTORS.NS",
         "HYUNDAI.NS",
         "INDHOTEL.NS",
-        "ITCHOTELS.NS",
+        "IHCL.NS",
         "UNITDSPR.NS",
         "RADICO.NS",
         "UBL.NS",

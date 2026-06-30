@@ -4,102 +4,117 @@ import yfinance as yf
 from datetime import datetime
 import pytz
 
-# Import our modular infrastructure components
 from scanner import MarketScanner, V20Strategy
 import notifier
 import reports
 
 WATCHLIST_FILE = "watchlists.json"
+PORTFOLIO_FILE = "portfolio.json"
 
 
-def load_watchlist():
-    """Loads target stock tickers from the local JSON config layout."""
-    if not os.path.exists(WATCHLIST_FILE):
-        # Fallback defaults if the file gets misplaced
-        default_data = {"tickers": ["RELIANCE.NS", "TCS.NS", "INFY.NS"]}
-        with open(WATCHLIST_FILE, "w") as f:
-            json.dump(default_data, f, indent=4)
-        return default_data["tickers"]
-
-    with open(WATCHLIST_FILE, "r") as f:
-        data = json.load(f)
-        return data.get("tickers", [])
+def load_json_config(filepath, default_structure):
+    if not os.path.exists(filepath):
+        with open(filepath, "w") as f:
+            json.dump(default_structure, f, indent=4)
+        return default_structure
+    with open(filepath, "r") as f:
+        return json.load(f)
 
 
-def execute_scan_cycle(tickers):
-    """Core scanning execution loop utilizing the modular strategy engine framework."""
-    print("⏳ Initializing Quantitative Engine Architecture...")
+def execute_scan_cycle(tickers, portfolio_data):
+    print("⏳ Initializing Risk-Aware Quantitative Engine...")
 
-    # Instantiate the V20 strategy and pass it right into the decoupled scanner engine
     v20_strategy = V20Strategy()
     scanner_engine = MarketScanner(strategy=v20_strategy)
-
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"📡 Processing live technical sweeps for {len(tickers)} assets...\n")
+
+    # 🧮 Compute risk allocation parameters globally for this run
+    total_capital = float(portfolio_data.get(
+        "total_portfolio_value_inr", 100000.0))
+    three_percent_allocation = total_capital * 0.03
+
+    # Mathematical Rule: Max of 3% or ₹5,000 flat ceiling
+    target_trade_size = max(three_percent_allocation, 5000.0)
+    max_six_percent_cap = target_trade_size * 2
+
+    positions = portfolio_data.get("current_positions", {})
 
     for ticker in tickers:
         try:
-            # Download 3 years of daily historical bars to satisfy the full 750-day V20 lookup window
             df = yf.Ticker(ticker).history(period="3y")
             if df.empty or len(df) < 21:
-                print(f"⚠️ Skipped {ticker}: Insufficient historical bars.")
                 continue
 
-            # Pass the pandas DataFrame directly to the strategy framework
             analysis = scanner_engine.scan_stock(ticker, df)
 
             if analysis["trigger"]:
-                # Broadcast the live breakout warning right to your Telegram chat app
+                # 🛡️ RISK GUARD LAYER: Assess holding position allocations prior to firing alert
+                already_allocated = 0.0
+                if ticker in positions:
+                    already_allocated = float(
+                        positions[ticker].get("allocated_capital", 0.0))
+
+                # Check if we have already used up our 2 allowed entries (6% maximum capital depth)
+                if already_allocated >= max_six_percent_cap:
+                    print(
+                        f"🛑 Risk Core Bypass: {ticker} triggered buy line, but allocation is maxed out at 6% (₹{already_allocated}). Trigger suppressed.")
+                    continue
+
+                is_averaging_run = already_allocated > 0.0
+                allocation_string = f"₹{target_trade_size:,.2f}" if not is_averaging_run else f"₹{target_trade_size:,.2f} (Position Averaging Layer)"
+
+                # Enhance message with risk telemetry variables
+                custom_msg = analysis["message"] + \
+                    f"\n\n💰 *Risk Allocation Matrix:* Allocate *{allocation_string}* to this trade block."
+
                 notifier.trigger_alert(
-                    title=analysis["title"],
-                    message=analysis["message"],
+                    title=analysis["title"] +
+                    (" [AVERAGING ENTRY]" if is_averaging_run else ""),
+                    message=custom_msg,
                     ticker=ticker,
                     signal_type=v20_strategy.name()
                 )
 
-                # Permanently append metric variables to Data/alerts.csv
                 m = analysis["metrics"]
                 notifier.log_alert_to_csv(
-                    timestamp=timestamp,
-                    signal_type=v20_strategy.name(),
-                    ticker=ticker,
-                    live_price=m["live_price"],
-                    low_target=m["low_target"],
-                    high_target=m["high_target"],
-                    historic_move=m["historic_move"],
-                    start_date=m["start_date"],
-                    end_date=m["end_date"]
+                    timestamp, v20_strategy.name(), ticker,
+                    m["live_price"], m["low_target"], m["high_target"],
+                    m["historic_move"], m["start_date"], m["end_date"]
                 )
         except Exception as e:
-            print(f"❌ Error processing analysis matrix for {ticker}: {e}")
+            print(f"❌ Error processing asset {ticker}: {e}")
 
 
 def main():
     print("🚀 Cloud Execution Hub Waking Up...")
-
-    # Standardize time tracking zones to Indian Standard Time (IST)
     tz_ist = pytz.timezone("Asia/Kolkata")
     now_ist = datetime.now(tz_ist)
     print(
         f"⏰ System Execution Timestamp: {now_ist.strftime('%Y-%m-%d %H:%M:%S')} IST")
 
-    # Load tickers
-    tickers = load_watchlist()
+    # Load watchlists and portfolio data configurations
+    watchlist_data = load_json_config(
+        WATCHLIST_FILE, {"V40": [], "V40_Next": []})
+    portfolio_data = load_json_config(
+        PORTFOLIO_FILE, {"total_portfolio_value_inr": 100000.0, "current_positions": {}})
+
+    # Combine lists into a single consolidated execution sequence
+    tickers = watchlist_data.get("V40", []) + \
+        watchlist_data.get("V40_Next", [])
+
     if not tickers:
-        print("🛑 Watchlist file is completely empty. Powering down engine.")
+        print("🛑 No target tickers found across indexing targets.")
         return
 
-    # Execute main analytical scan loop
-    execute_scan_cycle(tickers)
+    execute_scan_cycle(tickers, portfolio_data)
 
-    # ⏱️ Production Time Gate: Only write full files at market close (3:00 PM IST or later)
     if now_ist.hour >= 15:
-        print("📄 Post-market window detected. Generating deep historical data reports...")
+        print("📄 Post-market window detected. Compiling data history sheets...")
         reports.generate_all_reports()
     else:
-        print("ℹ️ Morning/Intraday run cycle. Skipping afternoon file compiling step.")
+        print("ℹ️ Intraday window. Skipping storage compilation.")
 
-    print("✅ Run cycle complete. Powering down cloud node safely.")
+    print("✅ System Run Completed Safely.")
 
 
 if __name__ == "__main__":
