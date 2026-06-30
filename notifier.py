@@ -1,53 +1,168 @@
 import os
+import json
 import requests
-import pandas as pd
+import yfinance as yf
+from datetime import datetime
+import pytz
 
-ALERT_LOG_FILE = "Data/alerts.csv"
-sent_alerts = set()
+from scanner import MarketScanner, V20Strategy
+import notifier
+import reports
 
-# 🔑 Your Telegram Gateway Credentials
-TELEGRAM_TOKEN = "8852776438:AAGn1z4sAo1qe86neId2ezqp9Lh6oMJOqUw"
-TELEGRAM_CHAT_ID = "8069715872"
+WATCHLIST_FILE = "watchlists.json"
+PORTFOLIO_FILE = "portfolio.json"
 
 
-def send_telegram_message(title, message):
-    """Sends the alert text directly to your Telegram chat."""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": f"⚠️ *{title}* ⚠️\n\n{message}",
-        "parse_mode": "Markdown"
+def load_json_config(filepath, default_structure):
+    if not os.path.exists(filepath):
+        with open(filepath, "w") as f:
+            json.dump(default_structure, f, indent=4)
+        return default_structure
+    with open(filepath, "r") as f:
+        return json.load(f)
+
+
+def create_github_issue(ticker, current_price, target_size, action_type="BUY"):
+    """Creates a tracking issue on GitHub for the interactive human approval confirmation layer."""
+    repo = os.getenv("GITHUB_REPOSITORY")
+    token = os.getenv("GITHUB_TOKEN")
+
+    if not repo or not token:
+        print("⚠️ GitHub Repository telemetry or token missing. Skipping confirmation gate link generation.")
+        return None
+
+    url = f"https://api.github.org/repos/{repo}/issues"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
     }
+
+    # Pack parameters inside an identifiable text template block for the secondary workflow to parse
+    issue_body = (
+        "### v20_QUANT_AUTOMATION_PAYLOAD\n"
+        "```json\n"
+        "{\n"
+        f'  "ticker": "{ticker}",\n'
+        f'  "action": "{action_type}",\n'
+        f'  "price": {current_price},\n'
+        f'  "allocation": {target_size}\n'
+        "}\n"
+        "```\n\n"
+        f"If you executed this trade in real life, simply click **Close Issue** below. "
+        "The background cloud engine will capture the callback event and automatically update your `portfolio.json` master ledger."
+    )
+
+    payload = {
+        "title": f"📢 [TRADE APPROVAL]: {action_type} {ticker} @ ₹{current_price}",
+        "body": issue_body,
+        "labels": ["v20-trade-pending"]
+    }
+
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            print("🚀 Alert successfully broadcasted to Telegram channel!")
-        else:
-            print(
-                f"Telegram API Warning: Code {response.status_code} - {response.text}")
+        response = requests.post(
+            url, json=payload, headers=headers, timeout=10)
+        if response.status_code == 201:
+            return response.json().get("html_url")
     except Exception as e:
-        print(f"Telegram Delivery Error: {e}")
+        print(f"Failed to provision GitHub Issue tracking gate: {e}")
+    return None
 
 
-def trigger_alert(title, message, ticker, signal_type):
-    alert_key = (ticker, signal_type)
-    if alert_key in sent_alerts:
-        return False
+def execute_scan_cycle(tickers, portfolio_data):
+    print("⏳ Initializing Risk-Aware Quantitative Engine...")
 
-    print(f"\n{'='*60}\n{title}\n{message}\n{'='*60}")
+    v20_strategy = V20Strategy()
+    scanner_engine = MarketScanner(strategy=v20_strategy)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # 📱 Clean Mobile delivery (No desktop popup code to crash the cloud node)
-    send_telegram_message(title, message)
+    total_capital = float(portfolio_data.get(
+        "total_portfolio_value_inr", 100000.0))
+    three_percent_allocation = total_capital * 0.03
+    target_trade_size = max(three_percent_allocation, 5000.0)
+    max_six_percent_cap = target_trade_size * 2
 
-    sent_alerts.add(alert_key)
-    return True
+    positions = portfolio_data.get("current_positions", {})
+
+    for ticker in tickers:
+        try:
+            df = yf.Ticker(ticker).history(period="3y")
+            if df.empty or len(df) < 21:
+                continue
+
+            analysis = scanner_engine.scan_stock(ticker, df)
+
+            if analysis["trigger"]:
+                already_allocated = 0.0
+                if ticker in positions:
+                    already_allocated = float(
+                        positions[ticker].get("allocated_capital", 0.0))
+
+                if already_allocated >= max_six_percent_cap:
+                    print(
+                        f"🛑 Risk Core Bypass: {ticker} triggered buy line, but allocation is maxed out at 6%. Trigger suppressed.")
+                    continue
+
+                is_averaging_run = already_allocated > 0.0
+                allocation_string = f"₹{target_trade_size:,.2f}" if not is_averaging_run else f"₹{target_trade_size:,.2f} (Position Averaging Layer)"
+
+                # 🛠️ Step 1: Provision the confirmation Issue tracker live on GitHub
+                current_price = analysis["metrics"]["live_price"]
+                approval_url = create_github_issue(
+                    ticker, current_price, target_trade_size)
+
+                # Step 2: Formulate dynamic interactive alerts
+                custom_msg = analysis["message"] + \
+                    f"\n\n💰 *Risk Allocation Matrix:* Allocate *{allocation_string}* to this trade block."
+                if approval_url:
+                    custom_msg += f"\n\n✅ [Click Here to Approve & Update Portfolio Ledger]({approval_url})"
+
+                notifier.trigger_alert(
+                    title=analysis["title"] +
+                    (" [AVERAGING ENTRY]" if is_averaging_run else ""),
+                    message=custom_msg,
+                    ticker=ticker,
+                    signal_type=v20_strategy.name()
+                )
+
+                m = analysis["metrics"]
+                notifier.log_alert_to_csv(
+                    timestamp, v20_strategy.name(), ticker,
+                    m["live_price"], m["low_target"], m["high_target"],
+                    m["historic_move"], m["start_date"], m["end_date"]
+                )
+        except Exception as e:
+            print(f"❌ Error processing asset {ticker}: {e}")
 
 
-def log_alert_to_csv(timestamp, signal_type, ticker, live_price, low_target, high_target, historic_move, start_date, end_date):
-    row = pd.DataFrame([{
-        "Timestamp": timestamp, "Signal": signal_type, "Ticker": ticker, "Live Price": live_price,
-        "Entry Price": low_target, "Exit Price": high_target, "Historic Move %": historic_move,
-        "Move Start Date": start_date, "Move End Date": end_date
-    }])
-    header = not os.path.exists(ALERT_LOG_FILE)
-    row.to_csv(ALERT_LOG_FILE, mode="a", header=header, index=False)
+def main():
+    print("🚀 Cloud Execution Hub Waking Up...")
+    tz_ist = pytz.timezone("Asia/Kolkata")
+    now_ist = datetime.now(tz_ist)
+    print(
+        f"⏰ System Execution Timestamp: {now_ist.strftime('%Y-%m-%d %H:%M:%S')} IST")
+
+    watchlist_data = load_json_config(
+        WATCHLIST_FILE, {"V40": [], "V40_Next": []})
+    portfolio_data = load_json_config(
+        PORTFOLIO_FILE, {"total_portfolio_value_inr": 100000.0, "current_positions": {}})
+
+    tickers = watchlist_data.get("V40", []) + \
+        watchlist_data.get("V40_Next", [])
+
+    if not tickers:
+        print("🛑 No target tickers found across indexing targets.")
+        return
+
+    execute_scan_cycle(tickers, portfolio_data)
+
+    if now_ist.hour >= 15:
+        print("📄 Post-market window detected. Compiling data history sheets...")
+        reports.generate_all_reports()
+    else:
+        print("ℹ️ Intraday window. Skipping storage compilation.")
+
+    print("✅ System Run Completed Safely.")
+
+
+if __name__ == "__main__":
+    main()

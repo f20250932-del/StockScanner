@@ -32,7 +32,6 @@ class V20Strategy(BaseStrategy):
         if data is None or len(data) < 2:
             return result
 
-        # Ensure we are looking at the dataframe row by row
         close_prices = data['Close'].values
         open_prices = data['Open'].values
         high_prices = data['High'].values
@@ -42,20 +41,18 @@ class V20Strategy(BaseStrategy):
         valid_bunches = []
         current_bunch = []
 
-        # Step 1: Track and extract all continuous green candle blocks
+        # Track and extract all continuous green candle blocks
         for i in range(len(data)):
             is_green = close_prices[i] > open_prices[i]
 
             if is_green:
                 current_bunch.append(i)
             else:
-                # Streak broke, evaluate the completed bunch if it exists
                 if current_bunch:
                     self._evaluate_and_store_bunch(
                         current_bunch, low_prices, high_prices, dates, valid_bunches)
                     current_bunch = []
 
-        # Catch any active streak right up to the final bar
         if current_bunch:
             self._evaluate_and_store_bunch(
                 current_bunch, low_prices, high_prices, dates, valid_bunches)
@@ -63,16 +60,15 @@ class V20Strategy(BaseStrategy):
         if not valid_bunches:
             return result
 
-        # Step 2: Use the most recent valid V20 bunch to establish our lines
+        # Use the most recent valid V20 bunch to establish boundaries
         latest_bunch = valid_bunches[-1]
-        buy_floor = latest_bunch["lowest_low"]
-        sell_ceiling = latest_bunch["highest_high"]
+        buy_floor = round(float(latest_bunch["lowest_low"]), 2)
+        sell_ceiling = round(float(latest_bunch["highest_high"]), 2)
         move_pct = latest_bunch["move_pct"]
 
-        # Step 3: Check if the current price is at or near the 'lowest low' buy line
-        current_close = float(close_prices[-1])
+        current_close = round(float(close_prices[-1]), 2)
 
-        # Trigger buy if price is within a 2.5% buffer of the support floor, but not broken below it significantly
+        # Trigger buy if price is within a strict 2.5% buffer zone of the structural support floor
         is_at_buy_line = (current_close >= buy_floor *
                           0.98) and (current_close <= buy_floor * 1.025)
 
@@ -99,14 +95,12 @@ class V20Strategy(BaseStrategy):
         return result
 
     def _evaluate_and_store_bunch(self, bunch_indices, low_prices, high_prices, dates, valid_bunches):
-        """Helper matrix method to check if a continuous green streak satisfies the >20% move threshold."""
         bunch_lows = [low_prices[idx] for idx in bunch_indices]
         bunch_highs = [high_prices[idx] for idx in bunch_indices]
 
         lowest_low = float(min(bunch_lows))
         highest_high = float(max(bunch_highs))
 
-        # Calculate percent gain from structural lowest low to highest high
         move_pct = ((highest_high - lowest_low) / lowest_low) * 100
 
         if move_pct >= 20.0:
@@ -120,8 +114,6 @@ class V20Strategy(BaseStrategy):
 
 
 class MarketScanner:
-    """Core scanning engine framework."""
-
     def __init__(self, strategy: BaseStrategy):
         self.strategy = strategy
 

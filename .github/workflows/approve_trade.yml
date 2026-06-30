@@ -1,0 +1,84 @@
+name: Handle Interactive Trade Approval
+
+on:
+  issues:
+    types: [closed]
+
+jobs:
+  process-approval:
+    if: contains(github.event.issue.labels.*.name, 'v20-trade-pending')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out master workspace branch
+        uses: actions/checkout@v4
+
+      - name: Configure environment runtime
+        uses: actions/setup-python@v5
+        with:
+          python-dev-component: 'hooks'
+
+      - name: Parse issue template and execute ledger transaction writeback
+        shell: python
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          import json
+          import os
+
+          body = os.getenv("ISSUE_BODY", "")
+          if "### v20_QUANT_AUTOMATION_PAYLOAD" not in body:
+              print("Closed issue does not contain valid trade payload signatures. Aborting.")
+              exit(0)
+
+          # Isolate JSON strings between code block markdown brackets
+          try:
+              raw_json = body.split("```json")[1].split("```")[0].strip()
+              trade = json.loads(raw_json)
+          except Exception as e:
+              print(f"Syntax error parsing inner issue payload string matrix: {e}")
+              exit(1)
+
+          ticker = trade["ticker"]
+          price = float(trade["price"])
+          allocated_capital = float(trade["allocation"])
+
+          portfolio_file = "portfolio.json"
+          
+          # Open and update portfolio parameters safely
+          if os.path.exists(portfolio_file):
+              with open(portfolio_file, "r") as f:
+                  data = json.load(f)
+          else:
+              data = {"total_portfolio_value_inr": 100000.0, "current_positions": {}}
+
+          positions = data.get("current_positions", {})
+
+          if ticker in positions:
+              # Position Averaging Layer
+              existing = positions[ticker]
+              new_total_capital = float(existing.get("allocated_capital", 0.0)) + allocated_capital
+              existing["units_held"] = int(existing.get("units_held", 0)) + int(allocated_capital / price)
+              existing["average_buy_price"] = round(new_total_capital / existing["units_held"], 2)
+              existing["allocated_capital"] = round(new_total_capital, 2)
+              print(f"Successfully processed averaging entry metrics for holding asset: {ticker}")
+          else:
+              # Primary Base Entry Block
+              positions[ticker] = {
+                  "allocated_capital": round(allocated_capital, 2),
+                  "average_buy_price": price,
+                  "units_held": int(allocated_capital / price)
+              }
+              print(f"Successfully tracked new position base entry ledger parameters for asset: {ticker}")
+
+          data["current_positions"] = positions
+          
+          with open(portfolio_file, "w") as f:
+              json.dump(data, f, indent=4)
+
+      - name: Commit asset transaction back to master branch repository storage
+        run: |
+          git config --global user.name "QuantBot-Ledger-Core"
+          git config --global user.email "quant-bot@github.com"
+          git add portfolio.json
+          git commit -m "Automated Writeback: Register asset allocation changes into portfolio ledger" || exit 0
+          git push origin main
