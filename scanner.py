@@ -1,52 +1,89 @@
-import yfinance as yf
 import pandas as pd
+from abc import ABC, abstractmethod
 
 
-def detect_historical_impulse(df):
-    in_green_streak = False
-    streak_start_idx = 0
+class BaseStrategy(ABC):
+    """
+    Abstract Base Class for all trading strategies. 
+    Any future strategy you write must inherit this class and implement its methods.
+    """
+    @abstractmethod
+    def name(self) -> str:
+        """Returns the identifier name of the strategy."""
+        pass
 
-    for i in range(len(df) - 1):
-        is_green = df["Close"].iloc[i] > df["Open"].iloc[i]
-        if is_green:
-            if not in_green_streak:
-                in_green_streak = True
-                streak_start_idx = i
-        else:
-            if in_green_streak:
-                streak_data = df.iloc[streak_start_idx:i]
-                lowest_low = streak_data["Low"].min()
-                highest_high = streak_data["High"].max()
-                move_pct = ((highest_high - lowest_low) / lowest_low) * 100
-
-                if move_pct >= 20:
-                    start_dt = streak_data.index[0]
-                    end_dt = streak_data.index[-1]
-                    days_taken = (end_dt - start_dt).days
-                    return True, lowest_low, highest_high, move_pct, start_dt.strftime("%d-%b-%Y"), end_dt.strftime("%d-%b-%Y"), days_taken
-                in_green_streak = False
-
-    return False, None, None, 0, None, None, 0
+    @abstractmethod
+    def analyze(self, ticker: str, data: pd.DataFrame) -> dict:
+        """
+        Analyzes historical stock data.
+        Returns a dictionary containing:
+        {
+            "trigger": bool,
+            "title": str,
+            "message": str,
+            "metrics": dict
+        }
+        """
+        pass
 
 
-def scan_single_stock(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        # Switched period from '1y' to '2y' (covers past 2 years of trading days)
-        df = stock.history(period="2y", interval="1d")
-        if df.empty or len(df) < 10:
-            return None
+class V20Strategy(BaseStrategy):
+    """
+    The core V20 Trading Strategy implementation.
+    Tracks volume-backed breakout metrics.
+    """
 
-        live_price = float(df["Close"].iloc[-1])
-        found, low_target, high_target, historic_move, start_date, end_date, days_taken = detect_historical_impulse(
-            df)
+    def name(self) -> str:
+        return "V20_Breakout"
 
-        if found:
-            return {
-                "live_price": live_price, "low_target": low_target, "high_target": high_target,
-                "historic_move": historic_move, "start_date": start_date, "end_date": end_date,
-                "days_taken": days_taken
+    def analyze(self, ticker: str, data: pd.DataFrame) -> dict:
+        # Fallback dictionary if conditions aren't met
+        result = {"trigger": False, "title": "", "message": "", "metrics": {}}
+
+        if data is None or len(data) < 21:
+            return result
+
+        # 1. Fetch relevant metrics from the pandas DataFrame
+        current_close = float(data['Close'].iloc[-1])
+        current_volume = float(data['Volume'].iloc[-1])
+
+        # Calculate trailing 20-day averages
+        avg_volume_20 = float(data['Volume'].iloc[-21:-1].mean())
+        highest_close_20 = float(data['Close'].iloc[-21:-1].max())
+
+        # 2. V20 Technical Rules Assessment
+        # Example condition: Close beats 20-day high AND volume is 1.5x the 20-day average
+        is_price_breakout = current_close > highest_close_20
+        is_volume_spike = current_volume > (avg_volume_20 * 1.5)
+
+        if is_price_breakout and is_volume_spike:
+            vol_expansion_pct = ((current_volume / avg_volume_20) - 1) * 100
+
+            result["trigger"] = True
+            result["title"] = f"🚀 V20 Breakout Alert: {ticker}"
+            result["message"] = (
+                f"Ticker {ticker} has triggered a formal V20 breakout!\n"
+                f"• Current Price: ₹{current_close:.2f} (Beats 20-day high of ₹{highest_close_20:.2f})\n"
+                f"• Volume Expansion: {vol_expansion_pct:.1f}% above 20-day average."
+            )
+            result["metrics"] = {
+                "live_price": current_close,
+                "low_target": highest_close_20,
+                "high_target": current_close * 1.20,  # Example +20% target
+                "historic_move": vol_expansion_pct,
+                "start_date": data.index[-21].strftime('%Y-%m-%d'),
+                "end_date": data.index[-1].strftime('%Y-%m-%d')
             }
-    except Exception as e:
-        print(f"Error reading data for {ticker}: {e}")
-    return None
+
+        return result
+
+
+class MarketScanner:
+    """Core scanning engine that coordinates data processing and strategy assessment."""
+
+    def __init__(self, strategy: BaseStrategy):
+        self.strategy = strategy
+
+    def scan_stock(self, ticker: str, historical_data: pd.DataFrame) -> dict:
+        """Executes the loaded strategy rules against the incoming ticker data stream."""
+        return self.strategy.analyze(ticker, historical_data)

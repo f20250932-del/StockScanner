@@ -1,91 +1,80 @@
-# main.py
-import json
 import os
-from datetime import datetime, timedelta
-import scanner
-import reports
+import json
+import yfinance as yf
+from datetime import datetime
+import pytz
+
+# Import our modular infrastructure components
+from scanner import MarketScanner, V20Strategy
 import notifier
+import reports
+
+WATCHLIST_FILE = "watchlists.json"
 
 
-def load_watchlist_tickers():
-    """Safely loads tickers from watchlists.json without importing it as a module."""
-    watchlist_path = "watchlists.json"
-    if os.path.exists(watchlist_path):
-        try:
-            with open(watchlist_path, "r") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return data
-                elif isinstance(data, dict) and "tickers" in data:
-                    return data["tickers"]
-                elif isinstance(data, dict):
-                    for key, val in data.items():
-                        if isinstance(val, list):
-                            return val
-        except Exception as e:
-            print(f"⚠️ Error reading watchlists.json: {e}")
-    return ["SBIN.NS", "TATAMOTORS.NS", "RELIANCE.NS"]
+def load_watchlist():
+    """Loads target stock tickers from the local JSON config layout."""
+    if not os.path.exists(WATCHLIST_FILE):
+        # Fallback defaults if the file gets misplaced
+        default_data = {"tickers": ["RELIANCE.NS", "TCS.NS", "INFY.NS"]}
+        with open(WATCHLIST_FILE, "w") as f:
+            json.dump(default_data, f, indent=4)
+        return default_data["tickers"]
+
+    with open(WATCHLIST_FILE, "r") as f:
+        data = json.load(f)
+        return data.get("tickers", [])
 
 
-def execute_scan_cycle(tickers, force_alerts=False):
-    """Loops through all tickers and processes scans via your scanner module."""
-    print(f"🔍 Scanning {len(tickers)} assets...")
+def execute_scan_cycle(tickers):
+    """Core scanning execution loop utilizing the modular strategy engine framework."""
+    print("⏳ Initializing Quantitative Engine Architecture...")
+
+    # Instantiate the V20 strategy and pass it right into the decoupled scanner engine
+    v20_strategy = V20Strategy()
+    scanner_engine = MarketScanner(strategy=v20_strategy)
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"📡 Processing live technical sweeps for {len(tickers)} assets...\n")
+
     for ticker in tickers:
         try:
-            result = scanner.scan_single_stock(ticker)
+            # Download 1 month of daily data to satisfy trailing 20-day calculations safely
+            df = yf.Ticker(ticker).history(period="1mo")
+            if df.empty or len(df) < 21:
+                print(f"⚠️ Skipped {ticker}: Insufficient historical bars.")
+                continue
 
-            if result and isinstance(result, dict):
-                title = f"SIGNAL DETECTED: {ticker}"
-                message = (
-                    f"Ticker: {ticker}\n"
-                    f"Live Price: ₹{result.get('live_price')}\n"
-                    f"Entry Price Target: ₹{result.get('low_target')}\n"
-                    f"Exit Target: ₹{result.get('high_target')}\n"
-                    f"Historic Move: {result.get('historic_move')}%"
+            # Pass the pandas DataFrame directly to the strategy framework
+            analysis = scanner_engine.scan_stock(ticker, df)
+
+            if analysis["trigger"]:
+                # Broadcast the live breakout warning right to your Telegram chat app
+                notifier.trigger_alert(
+                    title=analysis["title"],
+                    message=analysis["message"],
+                    ticker=ticker,
+                    signal_type=v20_strategy.name()
                 )
-                # If force_alerts is True (EOD audit), it bypasses line-cross rules
-                notifier.trigger_alert(title, message, ticker, "Impulse Zone")
+
+                # Permanently append metric variables to Data/alerts.csv
+                m = analysis["metrics"]
+                notifier.log_alert_to_csv(
+                    timestamp=timestamp,
+                    signal_type=v20_strategy.name(),
+                    ticker=ticker,
+                    live_price=m["live_price"],
+                    low_target=m["low_target"],
+                    high_target=m["high_target"],
+                    historic_move=m["historic_move"],
+                    start_date=m["start_date"],
+                    end_date=m["end_date"]
+                )
         except Exception as e:
-            print(f"⚠️ Error processing {ticker}: {e}")
-
-
-def is_market_hours():
-    """Checks if the current time falls within NSE/BSE trading sessions (Mon-Fri, 9:15 AM - 3:30 PM IST)."""
-    now_utc = datetime.utcnow()
-    now_ist = now_utc + timedelta(hours=5, minutes=30)
-
-    if now_ist.weekday() >= 5:
-        return False
-
-    market_start = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
-    market_end = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
-
-    return market_start <= now_ist <= market_end
+            print(f"❌ Error processing analysis matrix for {ticker}: {e}")
 
 
 def main():
-    print("🚀 Cloud Engine Instance Initiated...")
+    print("🚀 Cloud Execution Hub Waking Up...")
 
-    now_utc = datetime.utcnow()
-    now_ist = now_utc + timedelta(hours=5, minutes=30)
-    tickers = load_watchlist_tickers()
-
-    if is_market_hours():
-        print(
-            f"\n🔔 Market is Open [{now_ist.strftime('%H:%M:%S')} IST]. Processing live tracking routine...")
-        execute_scan_cycle(tickers, force_alerts=False)
-    else:
-        print(
-            f"💤 Market Closed (Current IST: {now_ist.strftime('%Y-%m-%d %H:%M:%S')}). Running post-market evaluation...")
-        execute_scan_cycle(tickers, force_alerts=True)
-
-        # Auto-generate summaries if it's the late afternoon run
-        if now_ist.hour >= 15:
-            print("📝 Generating post-market analytical data summaries...")
-            reports.generate_all_reports()
-
-    print("✅ Run cycle complete. Powering down cloud node safely.")
-
-
-if __name__ == "__main__":
-    main()
+    # Standardize time tracking zones
