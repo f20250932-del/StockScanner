@@ -2,40 +2,37 @@ name: Live Stock Scanner 24/7 Engine
 
 on:
   schedule:
-    - cron: '30 9 * * 1-5'
-  workflow_dispatch:
+    - cron: '30 3 * * 1-5'  # Runs at 9:00 AM IST Monday to Friday
+  workflow_dispatch:        # Allows you to trigger it manually anytime
 
 jobs:
   run-scanner:
     runs-on: ubuntu-latest
-
-    # Gives the cloud node permission to write/save files back into your repository folder
-    permissions:
-      contents: write
-
     steps:
-    - name: Checkout Code Repository
-      uses: actions/checkout@v4
+      - name: Check out Repository Code
+        uses: actions/checkout@v4
 
-    - name: Set up Python Environment
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Configure Python Runtime Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: Install Trading Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install yfinance pandas requests plyer; fi
+      - name: Install Trading Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install yfinance pandas requests pytz; fi
 
-    - name: Execute Live Stock Scan
+      - name: Execute Live Stock Scan
         env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python main.py
 
-    - name: Save and Commit Generated Reports
-      run: |
-        git config --local user.email "actions@github.com"
-        git config --local user.name "GitHub Actions Bot"
-        git add Data/*.txt Data/*.csv || true
-        git commit -m "Auto-logged latest market scan reports [Skip CI]" -a || echo "No new report modifications found."
-        git push origin main || echo "No changes to sync."
+      - name: Save and Commit Generated Reports
+        run: |
+          git config --local user.email "Actions@github.com"
+          git config --local user.name "GitHub Actions Bot"
+          git add Data/*.txt Data/*.csv || true
+          git commit -m "Auto-logged latest market scan reports [Skip CI]" -a || echo "No new report modifications found."
+          git push origin main || echo "No changes to sync."
