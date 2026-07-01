@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import pandas as pd
 import yfinance as yf
 from datetime import datetime
 import pytz
@@ -98,7 +99,7 @@ def execute_scan_cycle(tickers, portfolio_data):
                 print(f"   ❌ Data stream empty for {ticker}. Skipping asset.")
                 continue
 
-            # 🛠️ MultiIndex Flattening Step (Fixes columns breaking if yfinance nests ticker headers)
+            # 🛠️ MultiIndex Flattening Step (Now safely backed by the pandas import!)
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
