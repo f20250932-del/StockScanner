@@ -11,8 +11,9 @@ from scanner import MarketScanner, V20Strategy
 import notifier
 import reports
 
-WATCHLIST_FILE = "watchlists.json"
-PORTFOLIO_FILE = "portfolio.json"
+# Update these paths at the top of main.py
+WATCHLIST_FILE = "Data/watchlists.json"
+PORTFOLIO_FILE = "Data/portfolio.json"
 
 
 def load_json_config(filepath, default_structure):
