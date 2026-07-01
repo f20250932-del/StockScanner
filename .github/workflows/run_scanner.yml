@@ -3,11 +3,14 @@ name: Live Stock Scanner 24/7 Engine
 on:
   schedule:
     - cron: '30 3 * * 1-5'  # Runs at 9:00 AM IST Monday to Friday
-  workflow_dispatch:        # Allows you to trigger it manually anytime
+  workflow_dispatch:        # Allows manual execution
 
 jobs:
   run-scanner:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write       # Needed to commit generated report files
+      issues: write         # Crucial to create interactive trade approval forms
     steps:
       - name: Check out Repository Code
         uses: actions/checkout@v4
