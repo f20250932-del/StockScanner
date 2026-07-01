@@ -16,7 +16,7 @@ class BaseStrategy(ABC):
 
 class V20Strategy(BaseStrategy):
     """
-    V20 Quantitative Strategy.
+    V20 Quantitative Strategy with Advanced Telemetry Logging.
     1. Scans the last 750 days of daily candlestick bars.
     2. Identifies blocks of strictly continuous green candles (Close > Open).
     3. Filters streaks where the move from the bunch's lowest low to highest high is >= 20%.
@@ -57,7 +57,17 @@ class V20Strategy(BaseStrategy):
             self._evaluate_and_store_bunch(
                 current_bunch, low_prices, high_prices, dates, valid_bunches)
 
+        # 🛰️ Telemetry Logging Console Header
+        print(f"📊 Quantitative Engine Audit Loop for [ {ticker} ]")
+        print(
+            f"   ↳ Total Available Candlestick Records: {len(data)} trading sessions.")
+        print(
+            f"   ↳ Total Valid Historical V20 Momentum Zones Isolated: {len(valid_bunches)}")
+
         if not valid_bunches:
+            print(
+                "   ↳ Status: Neutral (No qualifying historical structural momentum streaks found).")
+            print("-" * 70)
             return result
 
         # Use the most recent valid V20 bunch to establish boundaries
@@ -68,11 +78,20 @@ class V20Strategy(BaseStrategy):
 
         current_close = round(float(close_prices[-1]), 2)
 
+        # Calculate standard distance parameter matrix for structural visibility
+        distance_from_floor = ((current_close - buy_floor) / buy_floor) * 100
+
+        print(
+            f"   ↳ Latest Dynamic Target Floor: ₹{buy_floor} | Ceiling: ₹{sell_ceiling} (Zone Spread: +{move_pct:.1f}%)")
+        print(
+            f"   ↳ Active Session Closing Value: ₹{current_close} ({distance_from_floor:+.1f}% distance relative to support)")
+
         # Trigger buy if price is within a strict 2.5% buffer zone of the structural support floor
         is_at_buy_line = (current_close >= buy_floor *
                           0.98) and (current_close <= buy_floor * 1.025)
 
         if is_at_buy_line:
+            print("   🚨 ALERT: Target asset is actively testing the critical support line! Triggering automated entry event.")
             result["trigger"] = True
             result["title"] = f"🟩 V20 Buy Signal: {ticker}"
             result["message"] = (
@@ -91,7 +110,11 @@ class V20Strategy(BaseStrategy):
                 "start_date": latest_bunch['start_date'],
                 "end_date": latest_bunch['end_date']
             }
+        else:
+            print(
+                "   ↳ Status: Holding Pattern (Asset trading stably inside normal consolidation bands).")
 
+        print("-" * 70)
         return result
 
     def _evaluate_and_store_bunch(self, bunch_indices, low_prices, high_prices, dates, valid_bunches):
