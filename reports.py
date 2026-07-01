@@ -32,7 +32,8 @@ def categorize_and_write_report(df_filtered, report_type, filename):
 
 
 def generate_all_reports(force_all=False):
-    csv_path = "Data/alerts.csv"
+
+    csv_path = "Data/alert_history_log.csv"
     if not os.path.exists(csv_path):
         return
 
