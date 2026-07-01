@@ -38,7 +38,6 @@ def create_github_issue(ticker, current_price, target_size, action_type="BUY"):
         "Accept": "application/vnd.github.v3+json"
     }
 
-    # Structural JSON data embedded cleanly inside a markdown code block for the webhook handler to read
     issue_body = (
         "### v20_QUANT_AUTOMATION_PAYLOAD\n"
         "```json\n"
@@ -81,12 +80,9 @@ def execute_scan_cycle(tickers, portfolio_data):
     scanner_engine = MarketScanner(strategy=v20_strategy)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # 🧮 Compute risk allocation parameters globally for this run
     total_capital = float(portfolio_data.get(
         "total_portfolio_value_inr", 100000.0))
     three_percent_allocation = total_capital * 0.03
-
-    # Mathematical Rule: Max of 3% or ₹5,000 flat ceiling
     target_trade_size = max(three_percent_allocation, 5000.0)
     max_six_percent_cap = target_trade_size * 2
 
@@ -94,41 +90,47 @@ def execute_scan_cycle(tickers, portfolio_data):
 
     for ticker in tickers:
         try:
-            df = yf.Ticker(ticker).history(period="3y")
-            if df.empty or len(df) < 21:
+            print(
+                f"📡 Downloading market history for {ticker} via cloud framework...")
+            # Using yf.download as it utilizes a distinct, more reliable endpoint inside cloud pipelines
+            df = yf.download(ticker, period="3y", progress=False)
+
+            if df.empty:
+                print(
+                    f"   ⚠️ Yahoo Finance returned an empty DataFrame for {ticker}. Attempting fallback close match download...")
+                df = yf.download(ticker, period="1mo", progress=False)
+
+            if df.empty:
+                print(
+                    f"   ❌ Network Block: Skipping {ticker} due to missing data stream access.")
                 continue
 
             analysis = scanner_engine.scan_stock(ticker, df)
 
             if analysis["trigger"]:
-                # 🛡️ RISK GUARD LAYER: Assess holding position allocations prior to firing alert
                 already_allocated = 0.0
                 if ticker in positions:
                     already_allocated = float(
                         positions[ticker].get("allocated_capital", 0.0))
 
-                # Check if we have already used up our 2 allowed entries (6% maximum capital depth)
                 if already_allocated >= max_six_percent_cap:
                     print(
-                        f"🛑 Risk Core Bypass: {ticker} triggered buy line, but allocation is maxed out at 6% (₹{already_allocated}). Trigger suppressed.")
+                        f"🛑 Risk Core Bypass: {ticker} allocation maxed out. Trigger suppressed.")
                     continue
 
                 is_averaging_run = already_allocated > 0.0
                 allocation_string = f"₹{target_trade_size:,.2f}" if not is_averaging_run else f"₹{target_trade_size:,.2f} (Position Averaging Layer)"
 
-                # 🛠️ Step 1: Provision the confirmation Issue tracker live on GitHub
                 current_price = analysis["metrics"]["live_price"]
                 approval_url = create_github_issue(
                     ticker, current_price, target_trade_size)
 
-                # Enhance message with risk telemetry variables and the validation hyperlink
                 custom_msg = analysis["message"] + \
                     f"\n\n💰 *Risk Allocation Matrix:* Allocate *{allocation_string}* to this trade block."
 
                 if approval_url:
                     custom_msg += f"\n\n✅ [Click Here to Approve & Update Portfolio Ledger]({approval_url})"
 
-                # Send final notification package
                 notifier.trigger_alert(
                     title=analysis["title"] +
                     (" [AVERAGING ENTRY]" if is_averaging_run else ""),
@@ -156,13 +158,11 @@ def main():
     print(
         f"⏰ System Execution Timestamp: {now_ist.strftime('%Y-%m-%d %H:%M:%S')} IST")
 
-    # Load watchlists and portfolio data configurations
     watchlist_data = load_json_config(
         WATCHLIST_FILE, {"V40": [], "V40_Next": []})
     portfolio_data = load_json_config(
         PORTFOLIO_FILE, {"total_portfolio_value_inr": 100000.0, "current_positions": {}})
 
-    # Combine lists into a single consolidated execution sequence
     tickers = watchlist_data.get("V40", []) + \
         watchlist_data.get("V40_Next", [])
 
