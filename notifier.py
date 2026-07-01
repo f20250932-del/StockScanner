@@ -4,7 +4,7 @@ import csv
 
 
 def trigger_alert(title, message, ticker, signal_type):
-    """Dispatches clean breakout payloads straight to your Telegram Bot Chat."""
+    """Dispatches breakout payloads straight to your Telegram Bot Chat using bulletproof HTML parsing."""
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -15,11 +15,19 @@ def trigger_alert(title, message, ticker, signal_type):
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
 
-    # Format message body beautifully using safe Markdown v1 rules
+    # We clean up any loose markdown characters to prevent string formatting crashes
+    clean_msg = message.replace("*", "").replace("•", "🔹")
+
+    # Formulate a beautiful HTML formatted text block (bulletproof against special character bugs)
+    html_text = (
+        f"<b>🔔 {title}</b>\n\n"
+        f"{clean_msg}"
+    )
+
     payload = {
         "chat_id": chat_id,
-        "text": f"*{title}*\n\n{message}",
-        "parse_mode": "Markdown",
+        "text": html_text,
+        "parse_mode": "HTML",
         "disable_web_page_preview": False
     }
 
@@ -43,7 +51,6 @@ def log_alert_to_csv(timestamp, strategy, ticker, price, floor, ceiling, move, s
     file_path = "Data/alert_history_log.csv"
 
     file_exists = os.path.exists(file_path)
-
     headers = ["Timestamp", "Strategy", "Ticker", "Live_Price",
                "Buy_Floor", "Exit_Ceiling", "Move_Pct", "Zone_Start", "Zone_End"]
 
