@@ -29,7 +29,7 @@ def create_github_issue(ticker, current_price, target_size, action_type="BUY"):
     token = os.getenv("GITHUB_TOKEN")
 
     if not repo or not token:
-        print("⚠️ GitHub Repository string or session GITHUB_TOKEN missing from environment. Skipping confirmation gate links.")
+        print("   ⚠️ GitHub Repository string or session GITHUB_TOKEN missing from environment. Skipping confirmation gate links.")
         return None
 
     url = f"https://api.github.org/repos/{repo}/issues"
@@ -92,18 +92,18 @@ def execute_scan_cycle(tickers, portfolio_data):
         try:
             print(
                 f"📡 Downloading market history for {ticker} via cloud framework...")
-            # Using yf.download as it utilizes a distinct, more reliable endpoint inside cloud pipelines
             df = yf.download(ticker, period="3y", progress=False)
 
             if df.empty:
-                print(
-                    f"   ⚠️ Yahoo Finance returned an empty DataFrame for {ticker}. Attempting fallback close match download...")
-                df = yf.download(ticker, period="1mo", progress=False)
-
-            if df.empty:
-                print(
-                    f"   ❌ Network Block: Skipping {ticker} due to missing data stream access.")
+                print(f"   ❌ Data stream empty for {ticker}. Skipping asset.")
                 continue
+
+            # 🛠️ MultiIndex Flattening Step (Fixes columns breaking if yfinance nests ticker headers)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+
+            # Force simple upper-case columns to map clean list profiles
+            df.columns = [str(col).capitalize() for col in df.columns]
 
             analysis = scanner_engine.scan_stock(ticker, df)
 
@@ -122,15 +122,17 @@ def execute_scan_cycle(tickers, portfolio_data):
                 allocation_string = f"₹{target_trade_size:,.2f}" if not is_averaging_run else f"₹{target_trade_size:,.2f} (Position Averaging Layer)"
 
                 current_price = analysis["metrics"]["live_price"]
+
+                # Run triggers explicitly
                 approval_url = create_github_issue(
                     ticker, current_price, target_trade_size)
 
                 custom_msg = analysis["message"] + \
                     f"\n\n💰 *Risk Allocation Matrix:* Allocate *{allocation_string}* to this trade block."
-
                 if approval_url:
                     custom_msg += f"\n\n✅ [Click Here to Approve & Update Portfolio Ledger]({approval_url})"
 
+                print(f"   📣 Firing notification vectors for {ticker}...")
                 notifier.trigger_alert(
                     title=analysis["title"] +
                     (" [AVERAGING ENTRY]" if is_averaging_run else ""),
