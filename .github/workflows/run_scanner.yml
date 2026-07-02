@@ -2,8 +2,9 @@ name: Live Stock Scanner 24/7 Engine
 
 on:
   schedule:
-    - cron: '30 3 * * 1-5'  # Runs at 9:00 AM IST Monday to Friday
-  workflow_dispatch:        # Allows manual execution
+    # 11:30 AM IST is 6:00 AM UTC | 3:45 PM IST is 10:15 AM UTC
+    - cron: '0 6,10 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   run-scanner:
