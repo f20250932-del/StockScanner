@@ -99,7 +99,7 @@ def execute_scan_cycle(tickers, portfolio_data):
                 print(f"   ❌ Data stream empty for {ticker}. Skipping asset.")
                 continue
 
-            # 🛠️ MultiIndex Flattening Step (Now safely backed by the pandas import!)
+            # MultiIndex Flattening Step safely backed by pandas
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
@@ -109,22 +109,32 @@ def execute_scan_cycle(tickers, portfolio_data):
             analysis = scanner_engine.scan_stock(ticker, df)
 
             if analysis["trigger"]:
+                current_price = analysis["metrics"]["live_price"]
+                m = analysis["metrics"]
+                strategy_name = v20_strategy.name()
+
+                # 1. ALWAYS write telemetry logs to maintain structural state-aware cache memory
+                notifier.log_alert_to_csv(
+                    timestamp, strategy_name, ticker,
+                    m["live_price"], m["low_target"], m["high_target"],
+                    m["historic_move"], m["start_date"], m["end_date"]
+                )
+
                 already_allocated = 0.0
                 if ticker in positions:
                     already_allocated = float(
                         positions[ticker].get("allocated_capital", 0.0))
 
+                # 2. Enforce risk threshold bypass evaluation secondary to state log
                 if already_allocated >= max_six_percent_cap:
                     print(
-                        f"🛑 Risk Core Bypass: {ticker} allocation maxed out. Trigger suppressed.")
+                        f"🛑 Risk Core Bypass: {ticker} allocation maxed out ({already_allocated} INR). Trigger suppressed.")
                     continue
 
                 is_averaging_run = already_allocated > 0.0
                 allocation_string = f"₹{target_trade_size:,.2f}" if not is_averaging_run else f"₹{target_trade_size:,.2f} (Position Averaging Layer)"
 
-                current_price = analysis["metrics"]["live_price"]
-
-                # Run triggers explicitly
+                # 3. Handle asynchronous confirmation workflows
                 approval_url = create_github_issue(
                     ticker, current_price, target_trade_size)
 
@@ -133,21 +143,16 @@ def execute_scan_cycle(tickers, portfolio_data):
                 if approval_url:
                     custom_msg += f"\n\n✅ [Click Here to Approve & Update Portfolio Ledger]({approval_url})"
 
+                # 4. Dispatch to state-aware notification layer
                 print(f"   📣 Firing notification vectors for {ticker}...")
                 notifier.trigger_alert(
                     title=analysis["title"] +
                     (" [AVERAGING ENTRY]" if is_averaging_run else ""),
                     message=custom_msg,
                     ticker=ticker,
-                    signal_type=v20_strategy.name()
+                    signal_type=strategy_name
                 )
 
-                m = analysis["metrics"]
-                notifier.log_alert_to_csv(
-                    timestamp, v20_strategy.name(), ticker,
-                    m["live_price"], m["low_target"], m["high_target"],
-                    m["historic_move"], m["start_date"], m["end_date"]
-                )
         except Exception as e:
             print(
                 f"❌ Critical Exception encountered processing asset {ticker}: {e}")
