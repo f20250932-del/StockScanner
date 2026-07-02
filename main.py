@@ -88,6 +88,7 @@ def execute_scan_cycle(tickers, portfolio_data):
     max_six_percent_cap = target_trade_size * 2
 
     positions = portfolio_data.get("current_positions", {})
+    pending_alerts_queue = []
 
     for ticker in tickers:
         try:
@@ -99,21 +100,17 @@ def execute_scan_cycle(tickers, portfolio_data):
                 print(f"   ❌ Data stream empty for {ticker}. Skipping asset.")
                 continue
 
-            # MultiIndex Flattening Step safely backed by pandas
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
-            # Force simple upper-case columns to map clean list profiles
             df.columns = [str(col).capitalize() for col in df.columns]
-
             analysis = scanner_engine.scan_stock(ticker, df)
 
             if analysis["trigger"]:
-                current_price = analysis["metrics"]["live_price"]
-                m = analysis["metrics"]
                 strategy_name = v20_strategy.name()
+                m = analysis["metrics"]
 
-                # 1. ALWAYS write telemetry logs to maintain structural state-aware cache memory
+                # 1. ALWAYS log telemetry immediately to capture database state
                 notifier.log_alert_to_csv(
                     timestamp, strategy_name, ticker,
                     m["live_price"], m["low_target"], m["high_target"],
@@ -125,38 +122,61 @@ def execute_scan_cycle(tickers, portfolio_data):
                     already_allocated = float(
                         positions[ticker].get("allocated_capital", 0.0))
 
-                # 2. Enforce risk threshold bypass evaluation secondary to state log
                 if already_allocated >= max_six_percent_cap:
                     print(
-                        f"🛑 Risk Core Bypass: {ticker} allocation maxed out ({already_allocated} INR). Trigger suppressed.")
+                        f"🛑 Risk Core Bypass: {ticker} allocation maxed out. Trigger suppressed.")
                     continue
 
-                is_averaging_run = already_allocated > 0.0
-                allocation_string = f"₹{target_trade_size:,.2f}" if not is_averaging_run else f"₹{target_trade_size:,.2f} (Position Averaging Layer)"
+                # Fetch original cache tracking date for chronological queue sorting
+                _, _, original_trigger_date_str = notifier.check_signal_age(
+                    ticker, strategy_name)
 
-                # 3. Handle asynchronous confirmation workflows
-                approval_url = create_github_issue(
-                    ticker, current_price, target_trade_size)
-
-                custom_msg = analysis["message"] + \
-                    f"\n\n💰 *Risk Allocation Matrix:* Allocate *{allocation_string}* to this trade block."
-                if approval_url:
-                    custom_msg += f"\n\n✅ [Click Here to Approve & Update Portfolio Ledger]({approval_url})"
-
-                # 4. Dispatch to state-aware notification layer
-                print(f"   📣 Firing notification vectors for {ticker}...")
-                notifier.trigger_alert(
-                    title=analysis["title"] +
-                    (" [AVERAGING ENTRY]" if is_averaging_run else ""),
-                    message=custom_msg,
-                    ticker=ticker,
-                    signal_type=strategy_name
-                )
+                # 2. Queue the payload instead of firing instantly
+                pending_alerts_queue.append({
+                    "ticker": ticker,
+                    "original_date_str": original_trigger_date_str,
+                    "analysis": analysis,
+                    "strategy_name": strategy_name,
+                    "already_allocated": already_allocated,
+                    "target_trade_size": target_trade_size
+                })
 
         except Exception as e:
             print(
                 f"❌ Critical Exception encountered processing asset {ticker}: {e}")
             print(traceback.format_exc())
+
+    # 3. CHRONOLOGICAL DISPATCH LAYER: Sort array by original entry date strings
+    if pending_alerts_queue:
+        print(
+            f"\nSorting {len(pending_alerts_queue)} pending triggers by chronological order...")
+        pending_alerts_queue.sort(key=lambda x: x["original_date_str"])
+
+        for item in pending_alerts_queue:
+            t = item["ticker"]
+            is_averaging_run = item["already_allocated"] > 0.0
+            allocation_string = f"₹{item['target_trade_size']:,.2f}" if not is_averaging_run else f"₹{item['target_trade_size']:,.2f} (Position Averaging Layer)"
+            current_price = item["analysis"]["metrics"]["live_price"]
+
+            # Deploy asynchronous interactive issues
+            approval_url = create_github_issue(
+                t, current_price, item["target_trade_size"])
+
+            custom_msg = item["analysis"]["message"] + \
+                f"\n\n💰 *Risk Allocation Matrix:* Allocate *{allocation_string}* to this trade block."
+            if approval_url:
+                custom_msg += f"\n\n✅ [Click Here to Approve & Update Portfolio Ledger]({approval_url})"
+
+            # Send chronological alert updates directly to Telegram
+            print(
+                f"   📣 Firing sorted notification vector for {t} (Trigger Date: {item['original_date_str']})...")
+            notifier.trigger_alert(
+                title=item["analysis"]["title"] +
+                (" [AVERAGING ENTRY]" if is_averaging_run else ""),
+                message=custom_msg,
+                ticker=t,
+                signal_type=item["strategy_name"]
+            )
 
 
 def main():

@@ -7,11 +7,13 @@ from datetime import datetime
 def check_signal_age(ticker, current_strategy, window_days=15):
     """
     Analyzes historical CSV telemetry data to determine if a signal is Fresh or Old.
-    Returns: ('FRESH', days) or ('OLD', days) or ('BRAND_NEW', 0)
+    Returns: (state, days_in_zone, first_seen_date_string)
     """
     file_path = "Data/alert_history_log.csv"
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
     if not os.path.exists(file_path):
-        return "BRAND_NEW", 0
+        return "BRAND_NEW", 0, today_str
 
     first_seen_date = None
 
@@ -19,7 +21,6 @@ def check_signal_age(ticker, current_strategy, window_days=15):
         with open(file_path, mode="r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # Track when this ticker first entered this specific strategy zone
                 if row.get("Ticker") == ticker and row.get("Strategy") == current_strategy:
                     try:
                         log_date = datetime.strptime(
@@ -30,18 +31,19 @@ def check_signal_age(ticker, current_strategy, window_days=15):
                         continue
     except Exception as e:
         print(f"   ⚠️ Error checking historical signal memory: {e}")
-        return "BRAND_NEW", 0
+        return "BRAND_NEW", 0, today_str
 
     if first_seen_date is None:
-        return "BRAND_NEW", 0
+        return "BRAND_NEW", 0, today_str
 
     today = datetime.now().date()
     days_in_zone = (today - first_seen_date).days
+    first_seen_str = first_seen_date.strftime("%Y-%m-%d")
 
     if days_in_zone <= window_days:
-        return "FRESH", days_in_zone
+        return "FRESH", days_in_zone, first_seen_str
     else:
-        return "OLD", days_in_zone
+        return "OLD", days_in_zone, first_seen_str
 
 
 def trigger_alert(title, message, ticker, signal_type):
@@ -56,8 +58,8 @@ def trigger_alert(title, message, ticker, signal_type):
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
 
-    # Check signal state classification
-    state, days = check_signal_age(ticker, title)
+    # Check signal state classification and pull original entry date
+    state, days, original_date = check_signal_age(ticker, title)
     is_friday = datetime.now().weekday() == 4
 
     # Core Routing Gate Logic
@@ -66,13 +68,13 @@ def trigger_alert(title, message, ticker, signal_type):
             f"   💤 {ticker} is a MATURE resident ({days} days in zone). Suppressed on daily feed.")
         return False
 
-    # Apply tag prefixes based on signal state maturity
+    # Apply tag prefixes containing explicit historical trigger timestamps
     if state == "OLD" and is_friday:
-        header_tag = f"<b>💤 [WEEKLY MATURE MATRIX REVIEW]</b>\n<b>🔔 {title}</b> (In Zone: {days} Days)"
+        header_tag = f"<b>💤 [MATURE MATRIX REVIEW]</b>\n<b>📅 Triggered On: {original_date}</b> ({days}d Ago)\n<b>🔔 {title}</b>"
     elif state == "FRESH":
-        header_tag = f"<b>🔥 [FRESH TRADING SIGNAL - {days}d IN ZONE]</b>\n<b>🔔 {title}</b>"
+        header_tag = f"<b>🔥 [FRESH TRADING SIGNAL]</b>\n<b>📅 Triggered On: {original_date}</b> ({days}d Ago)\n<b>🔔 {title}</b>"
     else:
-        header_tag = f"<b>🌟 [BRAND NEW SIGNAL INITIALIZATION]</b>\n<b>🔔 {title}</b>"
+        header_tag = f"<b>🌟 [BRAND NEW INITIALIZATION]</b>\n<b>📅 Triggered On: {original_date}</b> (Today)\n<b>🔔 {title}</b>"
 
     clean_msg = message.replace("*", "").replace("•", "🔹")
     html_text = f"{header_tag}\n\n{clean_msg}"
