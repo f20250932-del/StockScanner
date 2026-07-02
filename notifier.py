@@ -5,11 +5,8 @@ from datetime import datetime
 
 
 def check_signal_age(ticker, current_strategy, window_days=15):
-    """
-    Analyzes historical CSV telemetry data to determine if a signal is Fresh or Old.
-    Returns: (state, days_in_zone, first_seen_date_string)
-    """
-    file_path = "Data/alert_history_log.csv"
+    """Analyzes historical CSV telemetry data to determine if a signal is Fresh or Old."""
+    file_path = "Data/alert_history_log.csv" if "V20" in current_strategy else "Data/alert_history_log_knoxville.csv"
     today_str = datetime.now().strftime("%Y-%m-%d")
 
     if not os.path.exists(file_path):
@@ -47,28 +44,29 @@ def check_signal_age(ticker, current_strategy, window_days=15):
 
 
 def trigger_alert(title, message, ticker, signal_type):
-    """Dispatches breakout payloads straight to your Telegram Bot Chat using bulletproof HTML parsing."""
-    token = os.getenv("TELEGRAM_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    """Dispatches breakout payloads straight to the designated Telegram Bot based on Strategy Type."""
+    if "V20" in title:
+        token = os.getenv("TELEGRAM_TOKEN")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    else:
+        token = os.getenv("TELEGRAM_TOKEN_STRATEGY_B")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID_STRATEGY_B")
 
     if not token or not chat_id:
         print(
-            f"   ⚠️ Telegram credentials missing. Suppression on alert for {ticker}.")
+            f"   ⚠️ Telegram credentials missing for strategy layout. Suppression on alert for {ticker}.")
         return False
 
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    url = f"https://api.github.org/bot{token}/sendMessage" if "github" in token else f"https://api.telegram.org/bot{token}/sendMessage"
 
-    # Check signal state classification and pull original entry date
     state, days, original_date = check_signal_age(ticker, title)
     is_friday = datetime.now().weekday() == 4
 
-    # Core Routing Gate Logic
     if state == "OLD" and not is_friday:
         print(
             f"   💤 {ticker} is a MATURE resident ({days} days in zone). Suppressed on daily feed.")
         return False
 
-    # Apply tag prefixes containing explicit historical trigger timestamps
     if state == "OLD" and is_friday:
         header_tag = f"<b>💤 [MATURE MATRIX REVIEW]</b>\n<b>📅 Triggered On: {original_date}</b> ({days}d Ago)\n<b>🔔 {title}</b>"
     elif state == "FRESH":
@@ -90,7 +88,7 @@ def trigger_alert(title, message, ticker, signal_type):
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
             print(
-                f"   📣 Telegram notification dispatched successfully for {ticker} ({state})!")
+                f"   📣 Telegram notification dispatched successfully for {ticker} ({state}) via dedicated Bot Channel.")
             return True
         else:
             print(
@@ -101,10 +99,9 @@ def trigger_alert(title, message, ticker, signal_type):
 
 
 def log_alert_to_csv(timestamp, strategy, ticker, price, floor, ceiling, move, start, end):
-    """Appends structural alert data parameters safely to your local telemetry history files."""
+    """Appends structural alert data parameters safely to strategy-specific local telemetry history files."""
     os.makedirs("Data", exist_ok=True)
-    file_path = "Data/alert_history_log.csv"
-
+    file_path = "Data/alert_history_log.csv" if "V20" in strategy else "Data/alert_history_log_knoxville.csv"
     file_exists = os.path.exists(file_path)
     headers = ["Timestamp", "Strategy", "Ticker", "Live_Price",
                "Buy_Floor", "Exit_Ceiling", "Move_Pct", "Zone_Start", "Zone_End"]

@@ -8,6 +8,7 @@ import pytz
 import traceback
 
 from scanner import MarketScanner, V20Strategy
+import knoxville
 import notifier
 import reports
 
@@ -24,13 +25,13 @@ def load_json_config(filepath, default_structure):
         return json.load(f)
 
 
-def create_github_issue(ticker, current_price, target_size, action_type="BUY"):
-    """Creates a tracking issue on GitHub for the interactive human approval confirmation layer."""
+def create_github_issue(ticker, current_price, target_size, action_type="BUY", strategy_tag="V20"):
+    """Creates a tracking issue on GitHub for human approval confirmation layer."""
     repo = os.getenv("GITHUB_REPOSITORY")
     token = os.getenv("GITHUB_TOKEN")
 
     if not repo or not token:
-        print("   ⚠️ GitHub Repository string or session GITHUB_TOKEN missing from environment. Skipping confirmation gate links.")
+        print("   ⚠️ GitHub credentials missing. Skipping approval tracking issue.")
         return None
 
     url = f"https://api.github.org/repos/{repo}/issues"
@@ -40,23 +41,23 @@ def create_github_issue(ticker, current_price, target_size, action_type="BUY"):
     }
 
     issue_body = (
-        "### v20_QUANT_AUTOMATION_PAYLOAD\n"
+        f"### {strategy_tag}_QUANT_AUTOMATION_PAYLOAD\n"
         "```json\n"
         "{\n"
         f'  "ticker": "{ticker}",\n'
         f'  "action": "{action_type}",\n'
         f'  "price": {current_price},\n'
-        f'  "allocation": {target_size}\n'
+        f'  "allocation": {target_size},\n'
+        f'  "strategy": "{strategy_tag}"\n'
         "}\n"
         "```\n\n"
-        f"If you executed this trade in real life, simply click **Close Issue** below. "
-        "The background cloud engine will capture the callback event and automatically update your `portfolio.json` master ledger."
+        f"If you executed this {strategy_tag} trade in real life, click **Close Issue** below to sync your ledger."
     )
 
     payload = {
-        "title": f"📢 [TRADE APPROVAL]: {action_type} {ticker} @ ₹{current_price}",
+        "title": f"📢 [{strategy_tag} APPROVAL]: {action_type} {ticker} @ ₹{current_price}",
         "body": issue_body,
-        "labels": ["v20-trade-pending"]
+        "labels": [f"{strategy_tag.lower()}-trade-pending"]
     }
 
     try:
@@ -64,18 +65,15 @@ def create_github_issue(ticker, current_price, target_size, action_type="BUY"):
             url, json=payload, headers=headers, timeout=10)
         if response.status_code == 201:
             print(
-                f"   ✅ Successfully provisioned GitHub Issue tracking gate for {ticker}.")
+                f"   ✅ Provisioned GitHub Approval Issue for {ticker} ({strategy_tag}).")
             return response.json().get("html_url")
-        else:
-            print(
-                f"   ⚠️ GitHub API rejected issue creation with Status {response.status_code}: {response.text}")
     except Exception as e:
         print(f"   ❌ Failed to contact GitHub Issue API endpoints: {e}")
     return None
 
 
-def execute_scan_cycle(tickers, portfolio_data):
-    print("⏳ Initializing Risk-Aware Quantitative Engine...")
+def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
+    print("⏳ Initializing Dual-Engine Risk-Aware Quantitative Desk...")
 
     v20_strategy = V20Strategy()
     scanner_engine = MarketScanner(strategy=v20_strategy)
@@ -83,99 +81,104 @@ def execute_scan_cycle(tickers, portfolio_data):
 
     total_capital = float(portfolio_data.get(
         "total_portfolio_value_inr", 100000.0))
-    three_percent_allocation = total_capital * 0.03
-    target_trade_size = max(three_percent_allocation, 5000.0)
+    target_trade_size = max(total_capital * 0.03, 5000.0)
     max_six_percent_cap = target_trade_size * 2
 
-    positions = portfolio_data.get("current_positions", {})
-    pending_alerts_queue = []
+    v40_tickers = watchlist_data.get("V40", [])
+    v40_next_tickers = watchlist_data.get("V40_Next", [])
+    all_tickers = list(set(v40_tickers + v40_next_tickers))
 
-    for ticker in tickers:
+    pending_alerts_queue = []
+    is_post_market = now_ist.hour >= 15 and now_ist.minute >= 45 or now_ist.hour > 15
+
+    for ticker in all_tickers:
         try:
-            print(
-                f"📡 Downloading market history for {ticker} via cloud framework...")
+            print(f"📡 Downloading market history for {ticker}...")
             df = yf.download(ticker, period="3y", progress=False)
 
             if df.empty:
-                print(f"   ❌ Data stream empty for {ticker}. Skipping asset.")
                 continue
 
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
-
             df.columns = [str(col).capitalize() for col in df.columns]
-            analysis = scanner_engine.scan_stock(ticker, df)
 
-            if analysis["trigger"]:
+            # ---------------------------------------------------------
+            # ENGINE MODULE 1: V20 STRATEGY (Runs Every Sweep)
+            # ---------------------------------------------------------
+            v20_analysis = scanner_engine.scan_stock(ticker, df)
+            if v20_analysis["trigger"]:
                 strategy_name = v20_strategy.name()
-                m = analysis["metrics"]
+                m = v20_analysis["metrics"]
 
-                # 1. ALWAYS log telemetry immediately to capture database state
                 notifier.log_alert_to_csv(
-                    timestamp, strategy_name, ticker,
-                    m["live_price"], m["low_target"], m["high_target"],
-                    m["historic_move"], m["start_date"], m["end_date"]
-                )
+                    timestamp, strategy_name, ticker, m["live_price"], m["low_target"], m["high_target"], m["historic_move"], m["start_date"], m["end_date"])
 
-                already_allocated = 0.0
-                if ticker in positions:
-                    already_allocated = float(
-                        positions[ticker].get("allocated_capital", 0.0))
+                allocated = float(portfolio_data.get("current_positions", {}).get(
+                    ticker, {}).get("allocated_capital", 0.0))
+                if allocated < max_six_percent_cap:
+                    _, _, orig_date = notifier.check_signal_age(
+                        ticker, strategy_name)
+                    pending_alerts_queue.append({
+                        "ticker": ticker, "strategy_tag": "V20", "original_date_str": orig_date,
+                        "analysis": v20_analysis, "allocated": allocated, "size": target_trade_size
+                    })
 
-                if already_allocated >= max_six_percent_cap:
-                    print(
-                        f"🛑 Risk Core Bypass: {ticker} allocation maxed out. Trigger suppressed.")
-                    continue
+            # ---------------------------------------------------------
+            # ENGINE MODULE 2: KNOXVILLE DIVERGENCE (V40 & Post-Market Only)
+            # ---------------------------------------------------------
+            if ticker in v40_tickers and is_post_market:
+                knox_analysis = knoxville.scan_knoxville_divergence(df)
+                if knox_analysis["trigger"]:
+                    strategy_name = "KNOXVILLE"
+                    m = knox_analysis["metrics"]
 
-                # Fetch original cache tracking date for chronological queue sorting
-                _, _, original_trigger_date_str = notifier.check_signal_age(
-                    ticker, strategy_name)
+                    notifier.log_alert_to_csv(
+                        timestamp, strategy_name, ticker, m["live_price"], m["low_target"], m["high_target"], m["historic_move"], m["start_date"], m["end_date"])
 
-                # 2. Queue the payload instead of firing instantly
-                pending_alerts_queue.append({
-                    "ticker": ticker,
-                    "original_date_str": original_trigger_date_str,
-                    "analysis": analysis,
-                    "strategy_name": strategy_name,
-                    "already_allocated": already_allocated,
-                    "target_trade_size": target_trade_size
-                })
+                    allocated = float(portfolio_data.get("current_positions", {}).get(
+                        ticker, {}).get("allocated_capital", 0.0))
+                    # Handle separate trade processing for Knoxville rules
+                    if knox_analysis["action"] == "SELL" or allocated < max_six_percent_cap:
+                        _, _, orig_date = notifier.check_signal_age(
+                            ticker, strategy_name)
+                        pending_alerts_queue.append({
+                            "ticker": ticker, "strategy_tag": "KNOXVILLE", "original_date_str": orig_date,
+                            "analysis": knox_analysis, "allocated": allocated, "size": target_trade_size
+                        })
 
         except Exception as e:
-            print(
-                f"❌ Critical Exception encountered processing asset {ticker}: {e}")
-            print(traceback.format_exc())
+            print(f"❌ Exception processing asset {ticker}: {e}")
 
-    # 3. CHRONOLOGICAL DISPATCH LAYER: Sort array by original entry date strings
+    # CHRONOLOGICAL DISPATCH LAYER
     if pending_alerts_queue:
         print(
-            f"\nSorting {len(pending_alerts_queue)} pending triggers by chronological order...")
+            f"\nSorting {len(pending_alerts_queue)} total pending triggers chronologically...")
         pending_alerts_queue.sort(key=lambda x: x["original_date_str"])
 
         for item in pending_alerts_queue:
             t = item["ticker"]
-            is_averaging_run = item["already_allocated"] > 0.0
-            allocation_string = f"₹{item['target_trade_size']:,.2f}" if not is_averaging_run else f"₹{item['target_trade_size']:,.2f} (Position Averaging Layer)"
-            current_price = item["analysis"]["metrics"]["live_price"]
+            stag = item["strategy_tag"]
+            is_avg = item["allocated"] > 0.0 and item["analysis"]["action"] == "BUY"
 
-            # Deploy asynchronous interactive issues
+            alloc_str = f"₹{item['size']:,.2f}" if not is_avg else f"₹{item['size']:,.2f} (Position Averaging Layer)"
+            if item["analysis"]["action"] == "SELL":
+                alloc_str = "LIQUIDATE POSITION (Take Profits)"
+
             approval_url = create_github_issue(
-                t, current_price, item["target_trade_size"])
+                t, item["analysis"]["metrics"]["live_price"], item["size"], item["analysis"]["action"], stag)
 
             custom_msg = item["analysis"]["message"] + \
-                f"\n\n💰 *Risk Allocation Matrix:* Allocate *{allocation_string}* to this trade block."
-            if approval_url:
-                custom_msg += f"\n\n✅ [Click Here to Approve & Update Portfolio Ledger]({approval_url})"
+                f"\n\n💰 *Risk Matrix:* {alloc_str}"
+            if approval_url and item["analysis"]["action"] == "BUY":
+                custom_msg += f"\n\n✅ [Click Here to Approve Trade & Log Link]({approval_url})"
 
-            # Send chronological alert updates directly to Telegram
             print(
-                f"   📣 Firing sorted notification vector for {t} (Trigger Date: {item['original_date_str']})...")
+                f"   📣 Firing chronological update for {t} via {stag} channel vector...")
             notifier.trigger_alert(
                 title=item["analysis"]["title"] +
-                (" [AVERAGING ENTRY]" if is_averaging_run else ""),
-                message=custom_msg,
-                ticker=t,
-                signal_type=item["strategy_name"]
+                (" [AVERAGING ENTRY]" if is_avg else ""),
+                message=custom_msg, ticker=t, signal_type=stag
             )
 
 
@@ -191,20 +194,11 @@ def main():
     portfolio_data = load_json_config(
         PORTFOLIO_FILE, {"total_portfolio_value_inr": 100000.0, "current_positions": {}})
 
-    tickers = watchlist_data.get("V40", []) + \
-        watchlist_data.get("V40_Next", [])
-
-    if not tickers:
-        print("🛑 No target tickers found across indexing targets.")
-        return
-
-    execute_scan_cycle(tickers, portfolio_data)
+    execute_scan_cycle(watchlist_data, portfolio_data, now_ist)
 
     if now_ist.hour >= 15:
-        print("📄 Post-market window detected. Compiling data history sheets...")
+        print("📄 Post-market window detected. Compiling performance review assets...")
         reports.generate_all_reports()
-    else:
-        print("ℹ️ Intraday window. Skipping storage compilation.")
 
     print("✅ System Run Completed Safely.")
 
