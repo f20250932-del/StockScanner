@@ -1,6 +1,47 @@
 import os
 import requests
 import csv
+from datetime import datetime
+
+
+def check_signal_age(ticker, current_strategy, window_days=15):
+    """
+    Analyzes historical CSV telemetry data to determine if a signal is Fresh or Old.
+    Returns: ('FRESH', days) or ('OLD', days) or ('BRAND_NEW', 0)
+    """
+    file_path = "Data/alert_history_log.csv"
+    if not os.path.exists(file_path):
+        return "BRAND_NEW", 0
+
+    first_seen_date = None
+
+    try:
+        with open(file_path, mode="r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Track when this ticker first entered this specific strategy zone
+                if row.get("Ticker") == ticker and row.get("Strategy") == current_strategy:
+                    try:
+                        log_date = datetime.strptime(
+                            row.get("Timestamp").split()[0], "%Y-%m-%d").date()
+                        if first_seen_date is None or log_date < first_seen_date:
+                            first_seen_date = log_date
+                    except Exception:
+                        continue
+    except Exception as e:
+        print(f"   ⚠️ Error checking historical signal memory: {e}")
+        return "BRAND_NEW", 0
+
+    if first_seen_date is None:
+        return "BRAND_NEW", 0
+
+    today = datetime.now().date()
+    days_in_zone = (today - first_seen_date).days
+
+    if days_in_zone <= window_days:
+        return "FRESH", days_in_zone
+    else:
+        return "OLD", days_in_zone
 
 
 def trigger_alert(title, message, ticker, signal_type):
@@ -10,19 +51,31 @@ def trigger_alert(title, message, ticker, signal_type):
 
     if not token or not chat_id:
         print(
-            f"   ⚠️ Telegram configuration credentials missing from environment variables. Suppression on alert for {ticker}.")
+            f"   ⚠️ Telegram credentials missing. Suppression on alert for {ticker}.")
         return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
 
-    # We clean up any loose markdown characters to prevent string formatting crashes
-    clean_msg = message.replace("*", "").replace("•", "🔹")
+    # Check signal state classification
+    state, days = check_signal_age(ticker, title)
+    is_friday = datetime.now().weekday() == 4
 
-    # Formulate a beautiful HTML formatted text block (bulletproof against special character bugs)
-    html_text = (
-        f"<b>🔔 {title}</b>\n\n"
-        f"{clean_msg}"
-    )
+    # Core Routing Gate Logic
+    if state == "OLD" and not is_friday:
+        print(
+            f"   💤 {ticker} is a MATURE resident ({days} days in zone). Suppressed on daily feed.")
+        return False
+
+    # Apply tag prefixes based on signal state maturity
+    if state == "OLD" and is_friday:
+        header_tag = f"<b>💤 [WEEKLY MATURE MATRIX REVIEW]</b>\n<b>🔔 {title}</b> (In Zone: {days} Days)"
+    elif state == "FRESH":
+        header_tag = f"<b>🔥 [FRESH TRADING SIGNAL - {days}d IN ZONE]</b>\n<b>🔔 {title}</b>"
+    else:
+        header_tag = f"<b>🌟 [BRAND NEW SIGNAL INITIALIZATION]</b>\n<b>🔔 {title}</b>"
+
+    clean_msg = message.replace("*", "").replace("•", "🔹")
+    html_text = f"{header_tag}\n\n{clean_msg}"
 
     payload = {
         "chat_id": chat_id,
@@ -35,13 +88,13 @@ def trigger_alert(title, message, ticker, signal_type):
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
             print(
-                f"   📣 Telegram notification dispatched successfully for {ticker}!")
+                f"   📣 Telegram notification dispatched successfully for {ticker} ({state})!")
             return True
         else:
             print(
                 f"   ❌ Telegram API Error (Status {response.status_code}): {response.text}")
     except Exception as e:
-        print(f"   ❌ Network failure connecting to Telegram nodes: {e}")
+        print(f"   ❌ Network failure connecting to Telegram: {e}")
     return False
 
 
