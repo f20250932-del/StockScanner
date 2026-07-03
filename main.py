@@ -112,11 +112,15 @@ def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
                     strategy_name = v20_strategy.name()
                     m = v20_analysis["metrics"]
 
-                    # Exact structural mapping to match your CSV reporting columns
+                    # Normalize and explicitly pass 'Historic Move %' to prevent reports.py schema failures
+                    move_val = m.get("Historic Move %",
+                                     m.get("historic_move", 0.0))
+                    m["Historic Move %"] = move_val
+                    m["historic_move"] = move_val
+
                     notifier.log_alert_to_csv(
                         timestamp, strategy_name, ticker, m["live_price"],
-                        m["low_target"], m["high_target"], m.get(
-                            "historic_move", m.get("Historic Move %", 0.0)),
+                        m["low_target"], m["high_target"], move_val,
                         m["start_date"], m["end_date"]
                     )
 
@@ -143,10 +147,14 @@ def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
                         strategy_name = "KNOXVILLE"
                         m = knox_analysis["metrics"]
 
+                        move_val = m.get("Historic Move %",
+                                         m.get("historic_move", 0.0))
+                        m["Historic Move %"] = move_val
+                        m["historic_move"] = move_val
+
                         notifier.log_alert_to_csv(
                             timestamp, strategy_name, ticker, m["live_price"],
-                            m["low_target"], m["high_target"], m.get(
-                                "historic_move", m.get("Historic Move %", 0.0)),
+                            m["low_target"], m["high_target"], move_val,
                             m["start_date"], m["end_date"]
                         )
 
@@ -167,7 +175,7 @@ def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
         except Exception as e:
             print(f"❌ Core Exception processing asset {ticker}: {e}")
 
-    # CHRONOLOGICAL DISPATCH LAYER (Fixed Action Key & Safe String Evaluation)
+    # CHRONOLOGICAL DISPATCH LAYER
     if pending_alerts_queue:
         print(
             f"\nSorting {len(pending_alerts_queue)} total pending triggers safely...")
