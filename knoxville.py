@@ -39,12 +39,12 @@ def scan_knoxville_divergence(df, lookback_bars=200, rsi_period=14, mom_period=2
     current_rsi = rsi.iloc[-1]
     current_mom = momentum.iloc[-1]
 
-    # Lookback configurations mapping the specific indicator framework (TV-identical lookback = 30-bar pivot)
+    # Lookback configurations mapping the specific indicator framework (30-bar pivot lookback)
     pivot_window = 30
 
-    # 3. Geometric Extreme Verifications
-    is_highest_high = current_high >= high_series.iloc[-pivot_window:].max()
-    is_lowest_low = current_low <= low_series.iloc[-pivot_window:].min()
+    # 3. Geometric Extreme Verifications (CRITICAL: Compare against PRIOR historical bars only)
+    is_highest_high = current_high > high_series.iloc[-pivot_window:-1].max()
+    is_lowest_low = current_low < low_series.iloc[-pivot_window:-1].min()
 
     buy_trigger = False
     sell_trigger = False
@@ -52,28 +52,28 @@ def scan_knoxville_divergence(df, lookback_bars=200, rsi_period=14, mom_period=2
 
     # 4. Bullish Divergence Analysis (BUY Entry Layer)
     if is_lowest_low:
-        # Scan backward for the divergence window setup
-        for i in range(5, pivot_window):
+        # Scan backward for an old anchor point that matches true divergence rules
+        for i in range(2, pivot_window):
             past_mom = momentum.iloc[-i]
             past_low = low_series.iloc[-i]
             past_rsi = rsi.iloc[-i]
 
-            # Condition: Price made a lower low, but momentum is rising and RSI was oversold
-            if current_mom > past_mom and current_low < past_low and past_rsi <= 30:
+            # Condition: Current price is LOWER than past price, but current momentum is HIGHER (Bullish Divergence)
+            if current_low < past_low and current_mom > past_mom and past_rsi <= 30:
                 buy_trigger = True
                 historical_anchor_price = past_low
                 break
 
     # 5. Bearish Divergence Analysis (SELL Exit Layer)
     if is_highest_high:
-        # Scan backward for the divergence window setup
-        for i in range(5, pivot_window):
+        # Scan backward for an old anchor point that matches true divergence rules
+        for i in range(2, pivot_window):
             past_mom = momentum.iloc[-i]
             past_high = high_series.iloc[-i]
             past_rsi = rsi.iloc[-i]
 
-            # Condition: Price made a higher high, but momentum is falling and RSI was overbought
-            if current_mom < past_mom and current_high > past_high and past_rsi >= 70:
+            # Condition: Current price is HIGHER than past price, but current momentum is LOWER (Bearish Divergence)
+            if current_high > past_high and current_mom < past_mom and past_rsi >= 70:
                 sell_trigger = True
                 historical_anchor_price = past_high
                 break
