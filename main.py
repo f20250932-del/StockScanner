@@ -112,8 +112,13 @@ def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
                     strategy_name = v20_strategy.name()
                     m = v20_analysis["metrics"]
 
+                    # Exact structural mapping to match your CSV reporting columns
                     notifier.log_alert_to_csv(
-                        timestamp, strategy_name, ticker, m["live_price"], m["low_target"], m["high_target"], m["historic_move"], m["start_date"], m["end_date"])
+                        timestamp, strategy_name, ticker, m["live_price"],
+                        m["low_target"], m["high_target"], m.get(
+                            "historic_move", m.get("Historic Move %", 0.0)),
+                        m["start_date"], m["end_date"]
+                    )
 
                     allocated = float(portfolio_data.get("current_positions", {}).get(
                         ticker, {}).get("allocated_capital", 0.0))
@@ -139,11 +144,16 @@ def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
                         m = knox_analysis["metrics"]
 
                         notifier.log_alert_to_csv(
-                            timestamp, strategy_name, ticker, m["live_price"], m["low_target"], m["high_target"], m["historic_move"], m["start_date"], m["end_date"])
+                            timestamp, strategy_name, ticker, m["live_price"],
+                            m["low_target"], m["high_target"], m.get(
+                                "historic_move", m.get("Historic Move %", 0.0)),
+                            m["start_date"], m["end_date"]
+                        )
 
                         allocated = float(portfolio_data.get("current_positions", {}).get(
                             ticker, {}).get("allocated_capital", 0.0))
-                        if knox_analysis["action"] == "SELL" or allocated < max_six_percent_cap:
+                        action = knox_analysis.get("action", "BUY")
+                        if action == "SELL" or allocated < max_six_percent_cap:
                             _, _, orig_date = notifier.check_signal_age(
                                 ticker, strategy_name)
                             pending_alerts_queue.append({
@@ -157,7 +167,7 @@ def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
         except Exception as e:
             print(f"❌ Core Exception processing asset {ticker}: {e}")
 
-    # CHRONOLOGICAL DISPATCH LAYER
+    # CHRONOLOGICAL DISPATCH LAYER (Fixed Action Key & Safe String Evaluation)
     if pending_alerts_queue:
         print(
             f"\nSorting {len(pending_alerts_queue)} total pending triggers safely...")
@@ -172,18 +182,19 @@ def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
             try:
                 t = item["ticker"]
                 stag = item["strategy_tag"]
-                is_avg = item["allocated"] > 0.0 and item["analysis"]["action"] == "BUY"
+                action = item["analysis"].get("action", "BUY")
+                is_avg = item["allocated"] > 0.0 and action == "BUY"
 
                 alloc_str = f"₹{item['size']:,.2f}" if not is_avg else f"₹{item['size']:,.2f} (Position Averaging Layer)"
-                if item["analysis"]["action"] == "SELL":
+                if action == "SELL":
                     alloc_str = "LIQUIDATE POSITION (Take Profits)"
 
                 approval_url = create_github_issue(
-                    t, item["analysis"]["metrics"]["live_price"], item["size"], item["analysis"]["action"], stag)
+                    t, item["analysis"]["metrics"]["live_price"], item["size"], action, stag)
 
                 custom_msg = item["analysis"]["message"] + \
                     f"\n\n💰 *Risk Matrix:* {alloc_str}"
-                if approval_url and item["analysis"]["action"] == "BUY":
+                if approval_url and action == "BUY":
                     custom_msg += f"\n\n✅ [Click Here to Approve Trade & Log Link]({approval_url})"
 
                 print(
@@ -212,7 +223,6 @@ def main():
 
     execute_scan_cycle(watchlist_data, portfolio_data, now_ist)
 
-    # Isolated Report Execution Block so a strategy issue can never block your report delivery
     if now_ist.hour >= 15:
         print("📄 Post-market window detected. Compiling performance review assets...")
         try:
