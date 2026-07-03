@@ -138,7 +138,6 @@ def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
 
                     allocated = float(portfolio_data.get("current_positions", {}).get(
                         ticker, {}).get("allocated_capital", 0.0))
-                    # Handle separate trade processing for Knoxville rules
                     if knox_analysis["action"] == "SELL" or allocated < max_six_percent_cap:
                         _, _, orig_date = notifier.check_signal_age(
                             ticker, strategy_name)
@@ -150,11 +149,16 @@ def execute_scan_cycle(watchlist_data, portfolio_data, now_ist):
         except Exception as e:
             print(f"❌ Exception processing asset {ticker}: {e}")
 
-    # CHRONOLOGICAL DISPATCH LAYER
+    # CHRONOLOGICAL DISPATCH LAYER (Protected Against Type/Formatting Mismatches)
     if pending_alerts_queue:
         print(
-            f"\nSorting {len(pending_alerts_queue)} total pending triggers chronologically...")
-        pending_alerts_queue.sort(key=lambda x: x["original_date_str"])
+            f"\nSorting {len(pending_alerts_queue)} total pending triggers safely...")
+        try:
+            pending_alerts_queue.sort(
+                key=lambda x: str(x.get("original_date_str", "")))
+        except Exception as sort_err:
+            print(
+                f"⚠️ Chronological sorting fell back to unstructured layout: {sort_err}")
 
         for item in pending_alerts_queue:
             t = item["ticker"]
