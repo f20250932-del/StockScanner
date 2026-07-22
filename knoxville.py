@@ -19,12 +19,12 @@ def calculate_momentum(series, period=20):
 def scan_knoxville_divergence(df, lookback_bars=200, rsi_period=14, mom_period=20):
     """
     Algorithmic execution of Rob Booker's Knoxville Divergence (RB_KnoxDiv).
-    Evaluates lookback windows to safely trigger non-repainting buy/sell anchors.
+    Matches TradingView indicator logic faithfully across lookback windows.
     """
-    if len(df) < lookback_bars:
+    if len(df) < max(lookback_bars, 30):
         return {"trigger": False, "action": None, "metrics": {}}
 
-    # 1. Compute Base Core Infrastructure Indicators
+    # 1. Compute Base Core Indicators
     close_series = df["Close"].astype(float)
     high_series = df["High"].astype(float)
     low_series = df["Low"].astype(float)
@@ -32,53 +32,49 @@ def scan_knoxville_divergence(df, lookback_bars=200, rsi_period=14, mom_period=2
     rsi = calculate_rsi(close_series, rsi_period)
     momentum = calculate_momentum(close_series, mom_period)
 
-    # 2. Extract Current Data Points (Most recent closed candle)
+    # 2. Extract Latest Closed Candle Metrics
     current_high = high_series.iloc[-1]
     current_low = low_series.iloc[-1]
     current_close = close_series.iloc[-1]
     current_rsi = rsi.iloc[-1]
     current_mom = momentum.iloc[-1]
 
-    # Lookback configurations mapping the specific indicator framework (30-bar pivot lookback)
-    pivot_window = 30
-
-    # 3. Geometric Extreme Verifications (CRITICAL: Compare against PRIOR historical bars only)
-    is_highest_high = current_high > high_series.iloc[-pivot_window:-1].max()
-    is_lowest_low = current_low < low_series.iloc[-pivot_window:-1].min()
+    # Lookback window for divergence anchors (20 bars back)
+    search_window = 20
 
     buy_trigger = False
     sell_trigger = False
     historical_anchor_price = current_close
 
-    # 4. Bullish Divergence Analysis (BUY Entry Layer)
-    if is_lowest_low:
-        # Scan backward for an old anchor point that matches true divergence rules
-        for i in range(2, pivot_window):
+    # 3. Bullish Divergence Analysis (BUY Entry Layer)
+    # Check if RSI was oversold (<= 30) anywhere in the lookback window
+    recent_rsi_oversold = (rsi.iloc[-search_window:] <= 30).any()
+    if recent_rsi_oversold:
+        for i in range(2, search_window):
             past_mom = momentum.iloc[-i]
             past_low = low_series.iloc[-i]
-            past_rsi = rsi.iloc[-i]
 
-            # Condition: Current price is LOWER than past price, but current momentum is HIGHER (Bullish Divergence)
-            if current_low < past_low and current_mom > past_mom and past_rsi <= 30:
+            # Condition: Price made a lower low, but momentum is higher (Bullish Divergence)
+            if current_low < past_low and current_mom > past_mom:
                 buy_trigger = True
                 historical_anchor_price = past_low
                 break
 
-    # 5. Bearish Divergence Analysis (SELL Exit Layer)
-    if is_highest_high:
-        # Scan backward for an old anchor point that matches true divergence rules
-        for i in range(2, pivot_window):
+    # 4. Bearish Divergence Analysis (SELL Exit Layer)
+    # Check if RSI was overbought (>= 70) anywhere in the lookback window
+    recent_rsi_overbought = (rsi.iloc[-search_window:] >= 70).any()
+    if recent_rsi_overbought and not buy_trigger:
+        for i in range(2, search_window):
             past_mom = momentum.iloc[-i]
             past_high = high_series.iloc[-i]
-            past_rsi = rsi.iloc[-i]
 
-            # Condition: Current price is HIGHER than past price, but current momentum is LOWER (Bearish Divergence)
-            if current_high > past_high and current_mom < past_mom and past_rsi >= 70:
+            # Condition: Price made a higher high, but momentum is lower (Bearish Divergence)
+            if current_high > past_high and current_mom < past_mom:
                 sell_trigger = True
                 historical_anchor_price = past_high
                 break
 
-    # 6. Format Structural Responses
+    # 5. Format Structural Responses
     if buy_trigger:
         return {
             "trigger": True,
