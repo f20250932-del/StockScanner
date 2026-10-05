@@ -1,0 +1,85 @@
+=== DAILY PERFORMANCE REPORT ===
+Generated on: 05-Oct-2026 13:36:21
+Total Signals Logs Processed: 75
+
+Tier 1 (High Volatility Moves >= 5%): 75 signals
+Tier 2 (Moderate Volatility 2%-5%): 0 signals
+Tier 3 (Low Volatility < 2%): 0 signals
+
+= STRATEGY LOG DETAILS =
+          Timestamp        Ticker           Strategy  Live_Price  Move_Pct
+2026-10-05 13:35:01 BAJFINANCE.NS V20_Range_Breakout      970.00     22.50
+2026-10-05 13:35:01     HONAUT.NS V20_Range_Breakout    33785.00     28.07
+2026-10-05 13:35:01     COLPAL.NS V20_Range_Breakout     1775.00     22.50
+2026-10-05 13:35:01 ASIANPAINT.NS V20_Range_Breakout     2366.00     22.50
+2026-10-05 13:35:01        TCS.NS V20_Range_Breakout     2114.40     22.50
+2026-10-05 13:35:01   JSWINFRA.NS V20_Range_Breakout      359.40     22.50
+2026-10-05 13:35:01     FORTIS.NS V20_Range_Breakout      763.80     22.50
+2026-10-05 13:35:01     PFIZER.NS V20_Range_Breakout     3842.20     32.97
+2026-10-05 13:35:01      DMART.NS V20_Range_Breakout     3567.00     23.81
+2026-10-05 13:35:01   HDFCBANK.NS V20_Range_Breakout      704.80     22.50
+2026-10-05 13:35:01 PIDILITIND.NS V20_Range_Breakout     1487.70     22.50
+2026-10-05 13:35:01   UNITDSPR.NS V20_Range_Breakout     1369.00     22.50
+2026-10-05 13:35:01      GLAXO.NS V20_Range_Breakout     2732.80     39.48
+2026-10-05 13:35:01    HDFCAMC.NS V20_Range_Breakout     2346.00     22.50
+2026-10-05 13:35:01      CIPLA.NS V20_Range_Breakout     1335.50     22.50
+2026-10-05 13:35:01       CAMS.NS V20_Range_Breakout      683.85     20.05
+2026-10-05 13:35:01  ICICIBANK.NS V20_Range_Breakout     1332.00     22.50
+2026-10-05 13:35:01   HDFCLIFE.NS V20_Range_Breakout      531.00     22.50
+2026-10-05 13:35:01 ADANIPORTS.NS V20_Range_Breakout     1774.00     22.50
+2026-10-05 13:35:01 LALPATHLAB.NS V20_Range_Breakout     1971.30     22.50
+2026-10-05 13:35:01       CDSL.NS V20_Range_Breakout     1250.00     22.50
+2026-10-05 13:35:01 BAJAJ-AUTO.NS V20_Range_Breakout    10024.00     22.50
+2026-10-05 13:35:01   ASTRAZEN.NS V20_Range_Breakout     5909.00     28.30
+2026-10-05 13:35:01    ICICIGI.NS V20_Range_Breakout     1600.00     22.50
+2026-10-05 13:35:01        BSE.NS V20_Range_Breakout     3179.60     22.04
+2026-10-05 13:35:01        ITC.NS V20_Range_Breakout      268.90     22.50
+2026-10-05 13:35:01     MARICO.NS V20_Range_Breakout      790.00     22.50
+2026-10-05 13:35:01  TEAMLEASE.NS V20_Range_Breakout     1134.60     21.84
+2026-10-05 13:35:01      DABUR.NS V20_Range_Breakout      378.65     22.50
+2026-10-05 13:35:01        MCX.NS V20_Range_Breakout     3181.70     31.38
+2026-10-05 13:35:01  EICHERMOT.NS V20_Range_Breakout     7021.50     22.50
+2026-10-05 13:35:01        ACC.NS V20_Range_Breakout     1184.40     22.50
+2026-10-05 13:35:01         LT.NS V20_Range_Breakout     3750.00     22.50
+2026-10-05 13:35:01 KAJARIACER.NS V20_Range_Breakout     1214.40     24.59
+2026-10-05 13:35:01      DIXON.NS V20_Range_Breakout    12748.00     31.93
+2026-10-05 13:35:01      QUESS.NS V20_Range_Breakout      341.85     25.73
+2026-10-05 13:35:01 BAJAJFINSV.NS V20_Range_Breakout     1751.40     22.50
+2026-10-05 13:35:01  BATAINDIA.NS V20_Range_Breakout      611.05     22.50
+2026-10-05 13:35:01      TITAN.NS V20_Range_Breakout     4580.00     22.50
+2026-10-05 13:35:01     SANOFI.NS V20_Range_Breakout     3024.20     78.61
+2026-10-05 13:35:01 HINDUNILVR.NS V20_Range_Breakout     1838.40     22.50
+2026-10-05 13:35:01   GODREJCP.NS V20_Range_Breakout      837.00     22.50
+2026-10-05 13:35:01        M&M.NS V20_Range_Breakout     2857.60     22.50
+2026-10-05 13:35:01     RADICO.NS V20_Range_Breakout     4289.10     24.17
+2026-10-05 13:35:01        MRF.NS V20_Range_Breakout   123330.00     22.50
+2026-10-05 13:35:01   GILLETTE.NS V20_Range_Breakout     6979.00     21.07
+2026-10-05 13:35:01 ULTRACEMCO.NS V20_Range_Breakout    10850.00     22.50
+2026-10-05 13:35:01 BLUESTARCO.NS V20_Range_Breakout     1510.00     21.47
+2026-10-05 13:35:01  NESTLEIND.NS V20_Range_Breakout     1297.10     22.50
+2026-10-05 13:35:01       PGHH.NS V20_Range_Breakout     6768.00     22.50
+2026-10-05 13:35:01    HYUNDAI.NS V20_Range_Breakout     2000.00     22.50
+2026-10-05 13:35:01   AXISBANK.NS V20_Range_Breakout     1222.20     22.50
+2026-10-05 13:35:01        VBL.NS V20_Range_Breakout      439.60     20.36
+2026-10-05 13:35:01    HCLTECH.NS V20_Range_Breakout     1201.90     22.50
+2026-10-05 13:35:01 ABBOTINDIA.NS V20_Range_Breakout    26240.00     22.50
+2026-10-05 13:35:01        UBL.NS V20_Range_Breakout     1183.30     22.50
+2026-10-05 13:35:01    HAVELLS.NS V20_Range_Breakout     1046.70     20.46
+2026-10-05 13:35:01       SBIN.NS V20_Range_Breakout      958.00     22.50
+2026-10-05 13:35:01    MEDANTA.NS V20_Range_Breakout     1332.60     24.75
+2026-10-05 13:35:01   BOSCHLTD.NS V20_Range_Breakout    44960.00     29.36
+2026-10-05 13:35:01 ICICIPRULI.NS V20_Range_Breakout      454.90     22.50
+2026-10-05 13:35:01     RELAXO.NS V20_Range_Breakout      281.95     20.97
+2026-10-05 13:35:01  NAM-INDIA.NS V20_Range_Breakout     1061.00     21.23
+2026-10-05 13:35:01        AWL.NS V20_Range_Breakout      176.15     22.50
+2026-10-05 13:35:01   ANGELONE.NS V20_Range_Breakout      285.20     24.40
+2026-10-05 13:35:01       INFY.NS V20_Range_Breakout     1020.50     22.50
+2026-10-05 13:35:01   RELIANCE.NS V20_Range_Breakout     1186.40     22.50
+2026-10-05 13:35:01     VOLTAS.NS V20_Range_Breakout     1061.30     23.93
+2026-10-05 13:35:01     MARUTI.NS V20_Range_Breakout    11532.00     22.50
+2026-10-05 13:35:01   INDHOTEL.NS V20_Range_Breakout      725.00     22.50
+2026-10-05 13:35:01 APOLLOHOSP.NS V20_Range_Breakout     7985.00     22.50
+2026-10-05 13:35:01  KOTAKBANK.NS V20_Range_Breakout      416.00     22.50
+2026-10-05 13:35:01    PAGEIND.NS V20_Range_Breakout    37465.00     22.50
+2026-10-05 13:35:01       ERIS.NS V20_Range_Breakout     1188.60     27.33
+2026-10-05 13:35:01     JIOFIN.NS V20_Range_Breakout      212.00     27.62
